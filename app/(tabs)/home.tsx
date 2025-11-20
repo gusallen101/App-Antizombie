@@ -152,7 +152,7 @@ export default function HomeScreen() {
           {t('screens.home.zombieHeading')}
         </Text>
         <Text style={[styles.levelLabel, { color: palette.inputPlaceholder }]}>
-          {t('screens.home.zombieLevelLabel', { level: String(zombieLevel).padStart(2, '0') })}
+          {t('screens.home.zombieLevelLabel', { level: '' })}
         </Text>
         <View style={styles.zombieRow}>
           <Image source={illustrationSource} style={styles.illustration} resizeMode="contain" />
