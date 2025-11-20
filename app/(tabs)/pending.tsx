@@ -539,17 +539,13 @@ export default function PendingScreen() {
       return;
     }
     try {
-      const [apikey, userId] = await Promise.all([
-        AsyncStorage.getItem('@auth:apikey'),
-        AsyncStorage.getItem('@auth:userId'),
-      ]);
-      if (!apikey || !userId) {
+      const apikey = await AsyncStorage.getItem('@auth:apikey');
+      if (!apikey) {
         throw new Error(t('auth.loginErrorFallback'));
       }
       const params = new URLSearchParams();
-      params.append('id_usuario', userId);
+      params.append('id_cattodo', String(editingCategory.id));
       params.append('texto', categoryName.trim());
-      params.append('id_categoria', String(editingCategory.id));
 
       const response = await fetch(`${API_CONFIG.baseUrl}${CATEGORY_EDIT_ENDPOINT}`, {
         method: 'POST',
