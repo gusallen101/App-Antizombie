@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -476,7 +477,8 @@ export default function SettingsScreen() {
   }, [reminderEnabled, reminderTime, cancelAllReminders, handleSaveReminder, t]);
 
   return (
-    <AppScreen titleKey="tabs.settings">
+    <>
+      <AppScreen titleKey="tabs.settings">
       <View style={[styles.section, styles.profileCard, { backgroundColor: palette.surface }]}>
         <Text style={[styles.sectionTitle, { color: palette.textOnSurface }]}>{t('screens.settings.profileTitle')}</Text>
         <Image
@@ -686,8 +688,18 @@ export default function SettingsScreen() {
         )}
       </View>
 
-      {showTimePicker && (
-        <View style={styles.pickerOverlay}>
+      </AppScreen>
+
+      <Modal
+        visible={showTimePicker}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setShowTimePicker(false)}>
+        <Pressable
+          style={styles.pickerOverlay}
+          onPress={() => setShowTimePicker(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
           <View style={[styles.pickerCard, { backgroundColor: palette.surface }]}>
             <DateTimePicker
               value={tempReminderTime}
@@ -723,9 +735,10 @@ export default function SettingsScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
-      )}
-    </AppScreen>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -873,10 +886,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   pickerOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: '#00000070',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
   pickerCard: {
     width: '90%',
