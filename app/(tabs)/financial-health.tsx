@@ -489,14 +489,13 @@ export default function FinancialHealthScreen() {
       </View>
 
       <Modal transparent visible={entryModalVisible} animationType="fade" onRequestClose={closeEntryModal}>
-        <TouchableOpacity 
-          activeOpacity={1} 
+        <KeyboardAvoidingView
           style={styles.modalOverlay}
-          onPress={closeEntryModal}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardAvoidingView}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity 
+            activeOpacity={1} 
+            style={styles.modalOverlayTouchable}
+            onPress={closeEntryModal}>
             <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
               <View style={[styles.modalCard, { backgroundColor: palette.surface }]}>
                 <View style={styles.modalHeader}>
@@ -510,11 +509,7 @@ export default function FinancialHealthScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView
-                  contentContainerStyle={styles.modalContent}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                  bounces={false}>
+                <View style={styles.modalContent}>
                   <Text style={[styles.label, { color: palette.textOnSurface }]}>
                     {t('screens.financialHealth.conceptLabel')}
                   </Text>
@@ -586,28 +581,28 @@ export default function FinancialHealthScreen() {
                     onChangeText={setEntryAmount}
                     keyboardType="numeric"
                   />
+                </View>
 
-                  <View style={styles.modalFooter}>
-                    <TouchableOpacity style={styles.cancelButton} onPress={closeEntryModal} disabled={savingEntry}>
-                      <Text style={[styles.cancelLabel, { color: palette.inputPlaceholder }]}>
-                        {t('screens.financialHealth.cancel')}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.saveButton, { backgroundColor: palette.primary }]}
-                      onPress={handleSaveEntry}
-                      disabled={savingEntry}
-                    >
-                      <Text style={[styles.saveLabel, { color: palette.buttonText }]}>
-                        {savingEntry ? '…' : t('screens.financialHealth.save')}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </ScrollView>
+                <View style={styles.modalFooter}>
+                  <TouchableOpacity style={styles.cancelButton} onPress={closeEntryModal} disabled={savingEntry}>
+                    <Text style={[styles.cancelLabel, { color: palette.inputPlaceholder }]}>
+                      {t('screens.financialHealth.cancel')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.saveButton, { backgroundColor: palette.primary }]}
+                    onPress={handleSaveEntry}
+                    disabled={savingEntry}
+                  >
+                    <Text style={[styles.saveLabel, { color: palette.buttonText }]}>
+                      {savingEntry ? '…' : t('screens.financialHealth.save')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </TouchableOpacity>
-          </KeyboardAvoidingView>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </AppScreen>
   );
@@ -778,15 +773,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#00000080',
     justifyContent: 'center',
-    paddingHorizontal: 16,
   },
-  keyboardAvoidingView: {
-    width: '100%',
+  modalOverlayTouchable: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   modalCard: {
     borderRadius: 28,
     padding: 20,
-    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
