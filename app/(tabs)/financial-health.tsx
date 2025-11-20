@@ -500,7 +500,10 @@ export default function FinancialHealthScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled">
               <Text style={[styles.label, { color: palette.textOnSurface }]}>
                 {t('screens.financialHealth.conceptLabel')}
               </Text>

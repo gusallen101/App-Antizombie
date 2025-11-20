@@ -261,7 +261,7 @@ export default function GoalsScreen() {
               <ScrollView
                 contentContainerStyle={styles.modalContent}
                 showsVerticalScrollIndicator={false}
-              >
+                keyboardShouldPersistTaps="handled">
                 <Text style={[styles.label, { color: palette.textOnSurface }]}>
                   {t('screens.goals.form.categoryLabel')}
                 </Text>

@@ -480,7 +480,10 @@ export default function ViewGoalsScreen() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                contentContainerStyle={styles.modalContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled">
                 <Text style={[styles.label, { color: palette.inputPlaceholder }]}>
                   {t('screens.goals.form.categoryLabel')}
                 </Text>

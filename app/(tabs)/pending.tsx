@@ -806,6 +806,7 @@ export default function PendingScreen() {
           scrollPositionRef.current = event.nativeEvent.contentOffset.y;
         }}
         scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
         maintainVisibleContentPosition={{
           minIndexForVisible: 0,
         }}>
@@ -1069,7 +1070,7 @@ export default function PendingScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.categoryList}>
+            <ScrollView style={styles.categoryList} keyboardShouldPersistTaps="handled">
               <View style={styles.categoryTableHeader}>
                 <Text style={[styles.tableHeaderLabel, { color: palette.inputPlaceholder }]}>
                   {t('screens.pending.categoryListName')}
