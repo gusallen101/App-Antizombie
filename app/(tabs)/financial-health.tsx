@@ -6,7 +6,9 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -487,114 +489,125 @@ export default function FinancialHealthScreen() {
       </View>
 
       <Modal transparent visible={entryModalVisible} animationType="fade" onRequestClose={closeEntryModal}>
-        <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { backgroundColor: palette.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: palette.textOnSurface }]}>
-                {entryMode === 'income'
-                  ? t('screens.financialHealth.addIncome')
-                  : t('screens.financialHealth.addExpense')}
-              </Text>
-              <TouchableOpacity onPress={closeEntryModal} hitSlop={16}>
-                <Ionicons name="close" size={20} color={palette.inputPlaceholder} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              contentContainerStyle={styles.modalContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled">
-              <Text style={[styles.label, { color: palette.textOnSurface }]}>
-                {t('screens.financialHealth.conceptLabel')}
-              </Text>
-              <TextInput
-                style={[styles.input, { borderColor: palette.border, color: palette.textOnSurface }]}
-                placeholder={t('screens.financialHealth.conceptLabel')}
-                placeholderTextColor={palette.textSecondary}
-                value={entryConcept}
-                onChangeText={setEntryConcept}
-              />
-
-              <Text style={[styles.label, { color: palette.textOnSurface }]}>
-                {t('screens.financialHealth.typeLabel')}
-              </Text>
-              <View style={styles.radioRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.radioPill,
-                    {
-                      borderColor: palette.border,
-                      backgroundColor: entrySubtype === 'fixed' ? `${palette.primary}15` : 'transparent',
-                    },
-                  ]}
-                  onPress={() => setEntrySubtype('fixed')}
-                >
-                  <Text
-                    style={[
-                      styles.radioLabel,
-                      {
-                        color: entrySubtype === 'fixed' ? palette.primary : palette.inputPlaceholder,
-                      },
-                    ]}
-                  >
-                    {t('screens.financialHealth.fixed')}
+        <TouchableOpacity 
+          activeOpacity={1} 
+          style={styles.modalOverlay}
+          onPress={closeEntryModal}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingView}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+            <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+              <View style={[styles.modalCard, { backgroundColor: palette.surface }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: palette.textOnSurface }]}>
+                    {entryMode === 'income'
+                      ? t('screens.financialHealth.addIncome')
+                      : t('screens.financialHealth.addExpense')}
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.radioPill,
-                    {
-                      borderColor: palette.border,
-                      backgroundColor:
-                        entrySubtype === 'variable' ? `${palette.primary}15` : 'transparent',
-                    },
-                  ]}
-                  onPress={() => setEntrySubtype('variable')}
-                >
-                  <Text
-                    style={[
-                      styles.radioLabel,
-                      {
-                        color: entrySubtype === 'variable' ? palette.primary : palette.inputPlaceholder,
-                      },
-                    ]}
-                  >
-                    {t('screens.financialHealth.variable')}
+                  <TouchableOpacity onPress={closeEntryModal} hitSlop={16}>
+                    <Ionicons name="close" size={20} color={palette.inputPlaceholder} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  contentContainerStyle={styles.modalContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  bounces={false}>
+                  <Text style={[styles.label, { color: palette.textOnSurface }]}>
+                    {t('screens.financialHealth.conceptLabel')}
                   </Text>
-                </TouchableOpacity>
+                  <TextInput
+                    style={[styles.input, { borderColor: palette.border, color: palette.textOnSurface }]}
+                    placeholder={t('screens.financialHealth.conceptLabel')}
+                    placeholderTextColor={palette.textSecondary}
+                    value={entryConcept}
+                    onChangeText={setEntryConcept}
+                  />
+
+                  <Text style={[styles.label, { color: palette.textOnSurface }]}>
+                    {t('screens.financialHealth.typeLabel')}
+                  </Text>
+                  <View style={styles.radioRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.radioPill,
+                        {
+                          borderColor: palette.border,
+                          backgroundColor: entrySubtype === 'fixed' ? `${palette.primary}15` : 'transparent',
+                        },
+                      ]}
+                      onPress={() => setEntrySubtype('fixed')}
+                    >
+                      <Text
+                        style={[
+                          styles.radioLabel,
+                          {
+                            color: entrySubtype === 'fixed' ? palette.primary : palette.inputPlaceholder,
+                          },
+                        ]}
+                      >
+                        {t('screens.financialHealth.fixed')}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.radioPill,
+                        {
+                          borderColor: palette.border,
+                          backgroundColor:
+                            entrySubtype === 'variable' ? `${palette.primary}15` : 'transparent',
+                        },
+                      ]}
+                      onPress={() => setEntrySubtype('variable')}
+                    >
+                      <Text
+                        style={[
+                          styles.radioLabel,
+                          {
+                            color: entrySubtype === 'variable' ? palette.primary : palette.inputPlaceholder,
+                          },
+                        ]}
+                      >
+                        {t('screens.financialHealth.variable')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={[styles.label, { color: palette.textOnSurface }]}>
+                    {t('screens.financialHealth.amountLabel')}
+                  </Text>
+                  <TextInput
+                    style={[styles.input, { borderColor: palette.border, color: palette.textOnSurface }]}
+                    placeholder="0.00"
+                    placeholderTextColor={palette.textSecondary}
+                    value={entryAmount}
+                    onChangeText={setEntryAmount}
+                    keyboardType="numeric"
+                  />
+
+                  <View style={styles.modalFooter}>
+                    <TouchableOpacity style={styles.cancelButton} onPress={closeEntryModal} disabled={savingEntry}>
+                      <Text style={[styles.cancelLabel, { color: palette.inputPlaceholder }]}>
+                        {t('screens.financialHealth.cancel')}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.saveButton, { backgroundColor: palette.primary }]}
+                      onPress={handleSaveEntry}
+                      disabled={savingEntry}
+                    >
+                      <Text style={[styles.saveLabel, { color: palette.buttonText }]}>
+                        {savingEntry ? '…' : t('screens.financialHealth.save')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
               </View>
-
-              <Text style={[styles.label, { color: palette.textOnSurface }]}>
-                {t('screens.financialHealth.amountLabel')}
-              </Text>
-              <TextInput
-                style={[styles.input, { borderColor: palette.border, color: palette.textOnSurface }]}
-                placeholder="0.00"
-                placeholderTextColor={palette.textSecondary}
-                value={entryAmount}
-                onChangeText={setEntryAmount}
-                keyboardType="numeric"
-              />
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity style={styles.cancelButton} onPress={closeEntryModal} disabled={savingEntry}>
-                <Text style={[styles.cancelLabel, { color: palette.inputPlaceholder }]}>
-                  {t('screens.financialHealth.cancel')}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveButton, { backgroundColor: palette.primary }]}
-                onPress={handleSaveEntry}
-                disabled={savingEntry}
-              >
-                <Text style={[styles.saveLabel, { color: palette.buttonText }]}>
-                  {savingEntry ? '…' : t('screens.financialHealth.save')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        </TouchableOpacity>
       </Modal>
     </AppScreen>
   );
@@ -767,9 +780,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
+  keyboardAvoidingView: {
+    width: '100%',
+  },
   modalCard: {
     borderRadius: 28,
     padding: 20,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
