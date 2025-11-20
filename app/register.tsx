@@ -5,7 +5,6 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     Image,
     KeyboardAvoidingView,
     Modal,
@@ -39,6 +38,7 @@ export default function RegisterScreen() {
   const [tempGender, setTempGender] = useState<GenderOption>('h');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const toStringOrEmpty = (value: unknown) => {
     if (value === null || value === undefined) {
@@ -157,20 +157,34 @@ export default function RegisterScreen() {
         AsyncStorage.setItem('now-is', '[]'),
       ]);
 
-      Alert.alert(t('register.successTitle'), t('register.successMessage'), [
-        {
-          text: t('common.ok'),
-          onPress: () => {
+      // Mostrar mensaje de éxito visual
+      setSuccess(true);
+      setLoading(false);
+
+      // Navegar automáticamente después de un breve delay para asegurar que todo se guardó
+      // Esto evita problemas con Alert.alert en Android (especialmente Xiaomi/HyperOS)
+      setTimeout(() => {
+        try {
+          router.replace('/(tabs)/home');
+        } catch (navigationError) {
+          console.error('Navigation error after registration:', navigationError);
+          // Fallback: intentar navegar de nuevo después de otro breve delay
+          setTimeout(() => {
             router.replace('/(tabs)/home');
-          },
-        },
-      ]);
+          }, 500);
+        }
+      }, 1500);
     } catch (caughtError) {
       const message =
         caughtError instanceof Error ? caughtError.message : t('register.errorFallback');
       setError(message);
+      setSuccess(false);
+      console.error('Registration error:', caughtError);
     } finally {
-      setLoading(false);
+      // No cambiar loading aquí si fue exitoso, ya que se maneja arriba
+      if (!success) {
+        setLoading(false);
+      }
     }
   };
 
@@ -479,6 +493,28 @@ export default function RegisterScreen() {
           </Text>
         </TouchableOpacity>
 
+        {success && (
+          <View
+            style={[
+              styles.successBanner,
+              {
+                backgroundColor: `${palette.primary}22`,
+                borderColor: palette.primary,
+              },
+            ]}>
+            <Ionicons name="checkmark-circle" size={18} color={palette.primary} />
+            <Text
+              style={[
+                styles.successText,
+                {
+                  color: palette.primary,
+                },
+              ]}>
+              {t('register.successMessage')}
+            </Text>
+          </View>
+        )}
+
         {error && (
           <View
             style={[
@@ -623,6 +659,21 @@ const styles = StyleSheet.create({
   loginLink: {
     textAlign: 'center',
     fontSize: 14,
+  },
+  successBanner: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  successText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
   },
   errorBanner: {
     marginTop: 8,

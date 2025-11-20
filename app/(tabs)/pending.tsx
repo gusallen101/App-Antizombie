@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  InteractionManager,
   Modal,
   ScrollView,
   StyleSheet,
@@ -120,6 +121,11 @@ export default function PendingScreen() {
   const [recentTimes, setRecentTimes] = useState<Date[]>([]);
   const [collapsedPersonal, setCollapsedPersonal] = useState<Record<string | number, boolean>>({});
   const [collapsedShared, setCollapsedShared] = useState<Record<string | number, boolean>>({});
+  const [completeTaskModalVisible, setCompleteTaskModalVisible] = useState(false);
+  const [taskToComplete, setTaskToComplete] = useState<{ id: string | number; categoryId: string | number } | null>(null);
+  const [completingTask, setCompletingTask] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollPositionRef = useRef<number>(0);
 
   const sortByName = useCallback(
     <T extends { categoria?: string }>(items: T[]): T[] =>
@@ -189,10 +195,13 @@ export default function PendingScreen() {
     }, [hydrateUiState]),
   );
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (preserveScrollPosition = false) => {
     try {
       setError(null);
-      setLoading(true);
+      // Solo mostrar loading si no estamos preservando la posición del scroll
+      if (!preserveScrollPosition) {
+        setLoading(true);
+      }
       const [apikey, userId] = await Promise.all([
         AsyncStorage.getItem('@auth:apikey'),
         AsyncStorage.getItem('@auth:userId'),
@@ -230,7 +239,9 @@ export default function PendingScreen() {
     } catch (caughtError) {
       setError((caughtError as Error).message ?? t('screens.home.zombieError'));
     } finally {
-      setLoading(false);
+      if (!preserveScrollPosition) {
+        setLoading(false);
+      }
     }
   }, [normalizeArray, selectedCategory, sortByName, t, updateRecentTimestamps]);
 
@@ -317,58 +328,110 @@ export default function PendingScreen() {
   }, [fetchAll, selectedCategory, t, taskText]);
 
   const handleCompleteTodo = useCallback(
-    async (todoId: string | number, categoryId: string | number) => {
+    (todoId: string | number, categoryId: string | number) => {
+      // Guardar posición del scroll antes de mostrar el modal
+      scrollViewRef.current?.scrollTo({ y: scrollPositionRef.current, animated: false });
+      setTaskToComplete({ id: todoId, categoryId });
+      setCompleteTaskModalVisible(true);
+    },
+    [],
+  );
+
+  const handleCancelCompleteTask = useCallback(() => {
+    setCompleteTaskModalVisible(false);
+    setTaskToComplete(null);
+  }, []);
+
+  const handleConfirmCompleteTask = useCallback(async () => {
+    if (!taskToComplete) {
+      return;
+    }
+
+    try {
+      setCompletingTask(true);
+
       const [apikey, userId, name] = await Promise.all([
         AsyncStorage.getItem('@auth:apikey'),
         AsyncStorage.getItem('@auth:userId'),
         AsyncStorage.getItem('@auth:name'),
       ]);
-      if (!apikey || !userId) {
-        Alert.alert(t('auth.loginErrorFallback'));
-        return;
-      }
-      Alert.alert(
-        t('screens.pending.header'),
-        t('screens.pending.deleteTaskConfirm'),
-        [
-          { text: t('screens.financialHealth.cancel'), style: 'cancel' },
-          {
-            text: t('screens.financialHealth.delete'),
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                const params = new URLSearchParams();
-                params.append('nombre', name ?? '');
-                params.append('id_todo', String(todoId));
-                params.append('user_id_done', userId);
-                params.append('id_categoria', String(categoryId));
 
-                const response = await fetch(`${API_CONFIG.baseUrl}completetask`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    apikey,
-                  },
-                  body: params.toString(),
-                });
-                if (!response.ok) {
-                  throw new Error(t('screens.pending.errorDeleteTask'));
-                }
-                void fetchAll();
-              } catch (caughtError) {
-                Alert.alert(
-                  t('screens.pending.errorDeleteTask'),
-                  (caughtError as Error).message ?? t('screens.pending.errorDeleteTask'),
-                );
-              }
-            },
-          },
-        ],
-        { cancelable: true },
+      if (!apikey || !userId) {
+        throw new Error(t('auth.loginErrorFallback'));
+      }
+
+      const params = new URLSearchParams();
+      params.append('nombre', name ?? '');
+      params.append('id_todo', String(taskToComplete.id));
+      params.append('user_id_done', userId);
+      params.append('id_categoria', String(taskToComplete.categoryId));
+
+      const response = await fetch(`${API_CONFIG.baseUrl}completetask`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          apikey,
+        },
+        body: params.toString(),
+      });
+
+      if (!response.ok) {
+        throw new Error(t('screens.pending.errorDeleteTask'));
+      }
+
+      // Actualizar estado local primero para feedback inmediato sin recargar todo
+      // Esto evita el re-render completo que causa el reset del scroll
+      setPersonalLists((prevLists) =>
+        prevLists.map((list) => {
+          if (String(list.category_id) === String(taskToComplete.categoryId)) {
+            return {
+              ...list,
+              todos: list.todos.map((todo) =>
+                String(todo.id) === String(taskToComplete.id)
+                  ? { ...todo, status: 1 }
+                  : todo
+              ),
+            };
+          }
+          return list;
+        })
       );
-    },
-    [fetchAll, t],
-  );
+
+      setSharedLists((prevLists) =>
+        prevLists.map((list) => {
+          if (String(list.category_id) === String(taskToComplete.categoryId)) {
+            return {
+              ...list,
+              todos: list.todos.map((todo) =>
+                String(todo.id) === String(taskToComplete.id)
+                  ? { ...todo, status: 1 }
+                  : todo
+              ),
+            };
+          }
+          return list;
+        })
+      );
+
+      // Cerrar modal
+      setCompleteTaskModalVisible(false);
+      setTaskToComplete(null);
+
+      // Sincronizar con servidor en segundo plano (sin afectar el scroll)
+      // Esto asegura que los datos estén actualizados pero no causa re-render completo
+      fetchAll(true).catch(() => {
+        // Si falla, recargar todo como fallback
+        void fetchAll();
+      });
+    } catch (caughtError) {
+      Alert.alert(
+        t('screens.pending.errorDeleteTask'),
+        (caughtError as Error).message ?? t('screens.pending.errorDeleteTask'),
+      );
+    } finally {
+      setCompletingTask(false);
+    }
+  }, [fetchAll, taskToComplete, t]);
 
   const handleAddCategory = useCallback(async () => {
     if (!categoryName.trim()) {
@@ -676,10 +739,49 @@ export default function PendingScreen() {
       if (!response.ok) {
         throw new Error(t('screens.pending.errorSaveTask'));
       }
+
+      // Actualizar estado local primero para evitar re-render completo que causa reset del scroll
+      setPersonalLists((prevLists) =>
+        prevLists.map((list) => {
+          if (String(list.category_id) === String(editingTodo.categoryId)) {
+            return {
+              ...list,
+              todos: list.todos.map((todo) =>
+                String(todo.id) === String(editingTodo.id)
+                  ? { ...todo, texto: editingTodoText.trim() }
+                  : todo
+              ),
+            };
+          }
+          return list;
+        })
+      );
+
+      setSharedLists((prevLists) =>
+        prevLists.map((list) => {
+          if (String(list.category_id) === String(editingTodo.categoryId)) {
+            return {
+              ...list,
+              todos: list.todos.map((todo) =>
+                String(todo.id) === String(editingTodo.id)
+                  ? { ...todo, texto: editingTodoText.trim() }
+                  : todo
+              ),
+            };
+          }
+          return list;
+        })
+      );
+
       setEditTodoModalVisible(false);
       setEditingTodo(null);
       setEditingTodoText('');
-      void fetchAll();
+
+      // Sincronizar con servidor en segundo plano (sin afectar el scroll)
+      fetchAll(true).catch(() => {
+        // Si falla, recargar todo como fallback
+        void fetchAll();
+      });
     } catch (caughtError) {
       Alert.alert(
         t('screens.pending.errorSaveTask'),
@@ -697,7 +799,16 @@ export default function PendingScreen() {
 
   return (
     <AppScreen titleKey="tabs.pending">
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={styles.content}
+        onScroll={(event) => {
+          scrollPositionRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        maintainVisibleContentPosition={{
+          minIndexForVisible: 0,
+        }}>
         <View style={[styles.card, { backgroundColor: palette.surface }]}>
           <Text style={[styles.cardTitle, { color: palette.textOnSurface }]}>
             {t('screens.pending.addNew')}
@@ -889,7 +1000,8 @@ export default function PendingScreen() {
                               textDecorationLine: todo.status === 1 ? 'line-through' : 'none',
                             },
                           ]}
-                        >
+                          numberOfLines={0}
+                          ellipsizeMode="tail">
                           {todo.texto}
                         </Text>
                       </TouchableOpacity>
@@ -1115,6 +1227,58 @@ export default function PendingScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={completeTaskModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelCompleteTask}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: palette.surface }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={[styles.modalTitle, { color: palette.textOnSurface }]}>
+                {t('screens.pending.header')}
+              </Text>
+              <TouchableOpacity onPress={handleCancelCompleteTask} hitSlop={8}>
+                <Ionicons name="close" size={20} color={palette.inputPlaceholder} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.modalDescription, { color: palette.inputPlaceholder }]}>
+              {t('screens.pending.deleteTaskConfirm')}
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  {
+                    borderColor: palette.accent,
+                    flex: 1,
+                  },
+                ]}
+                onPress={handleCancelCompleteTask}
+                disabled={completingTask}>
+                <Text style={[styles.secondaryButtonLabel, { color: palette.accent }]}>
+                  {t('screens.financialHealth.cancel')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  {
+                    backgroundColor: '#5fed85',
+                    flex: 1,
+                  },
+                ]}
+                onPress={handleConfirmCompleteTask}
+                disabled={completingTask}>
+                <Text style={[styles.primaryButtonLabel, { color: '#ffffff' }]}>
+                  {completingTask ? '…' : t('screens.pending.completeTask')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </AppScreen>
   );
 }
@@ -1242,14 +1406,21 @@ const styles = StyleSheet.create({
   },
   todoMain: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 8,
   },
   todoText: {
     fontSize: 16,
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   todoEditButton: {
     padding: 6,
+    flexShrink: 0,
   },
   listActions: {
     flexDirection: 'row',
