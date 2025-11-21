@@ -193,7 +193,7 @@ export const translations: Record<'en' | 'es', TranslationDictionary> = {
         like: 'Completed',
         dislike: 'Skip for now',
         loading: 'Loading your pending tasks…',
-        instructions: 'Swipe right if you completed it, left if you need more time.',
+        instructions: 'Swipe right complete | Swipe left skip',
       },
       financialHealth: {
         headline: 'Financial health',
@@ -551,7 +551,7 @@ export const translations: Record<'en' | 'es', TranslationDictionary> = {
         like: 'Completada',
         dislike: 'No la logré',
         loading: 'Cargando tus tareas pendientes…',
-        instructions: 'Desliza a la derecha si completaste la tarea, a la izquierda si no.',
+        instructions: 'Derecha Hecho | Iizquierda No',
       },
       financialHealth: {
         headline: 'Salud financiera',

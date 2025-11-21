@@ -199,6 +199,12 @@ export default function CompleteTasksScreen() {
 
     return (
       <View style={styles.cardWrapper}>
+        <View style={styles.instructions}>
+          <Ionicons name="swap-horizontal" size={16} color={palette.inputPlaceholder} />
+          <Text style={[styles.instructionsLabel, { color: palette.inputPlaceholder }]}>
+            {t('screens.completeTasks.instructions')}
+          </Text>
+        </View>
         {totalCards > 0 && (
           <Text style={[styles.counterLabel, { color: palette.textSecondary }]}>
             {progressIndex} / {totalCards}
@@ -264,12 +270,6 @@ export default function CompleteTasksScreen() {
             }}
           />
         </View>
-        <View style={styles.instructions}>
-          <Ionicons name="swap-horizontal" size={16} color={palette.inputPlaceholder} />
-          <Text style={[styles.instructionsLabel, { color: palette.inputPlaceholder }]}>
-            {t('screens.completeTasks.instructions')}
-          </Text>
-        </View>
       </View>
     );
   };
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   screenContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingBottom: 32,
+    paddingBottom: 100,
     paddingTop: 12,
   },
   center: {
@@ -337,13 +337,15 @@ const styles = StyleSheet.create({
   cardWrapper: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 24,
+    justifyContent: 'flex-start',
+    paddingTop: 20,
+    gap: 4,
     width: '100%',
   },
   counterLabel: {
     fontSize: 14,
     letterSpacing: 1,
+    fontWeight: '600',
   },
   cardLabel: {
     fontSize: 12,
@@ -371,21 +373,21 @@ const styles = StyleSheet.create({
   },
   swiperContainer: {
     width: '100%',
-    flex: 1,
-    justifyContent: 'center',
-    maxHeight: 420,
+    height: 500,
+    justifyContent: 'flex-start',
+    marginTop: -10,
   },
   instructions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 100,
+    paddingHorizontal: 16,
   },
   instructionsLabel: {
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
-    flexShrink: 1,
+    fontWeight: '500',
   },
   cardImage: {
     width: '100%',
@@ -399,31 +401,40 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   overlayLabel: {
-    borderWidth: 2,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    fontWeight: '700',
+    fontSize: 32,
+    fontWeight: '900',
     textTransform: 'uppercase',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 5,
+    letterSpacing: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 10,
   },
   overlayWrapperLeft: {
     position: 'absolute',
-    top: 24,
-    left: 16,
+    top: 40,
+    left: 30,
   },
   overlayWrapperRight: {
     position: 'absolute',
-    top: 24,
-    right: 16,
+    top: 40,
+    right: 30,
     alignItems: 'flex-end',
   },
   overlayLabelLeft: {
-    color: '#FF6B6B',
-    borderColor: '#FF6B6B',
+    color: '#FFFFFF',
+    backgroundColor: '#FF4757',
+    borderColor: '#FFFFFF',
   },
   overlayLabelRight: {
-    color: '#2ECC71',
-    borderColor: '#2ECC71',
+    color: '#FFFFFF',
+    backgroundColor: '#26de81',
+    borderColor: '#FFFFFF',
   },
 });
 
