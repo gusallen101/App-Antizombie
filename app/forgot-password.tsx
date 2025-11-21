@@ -17,6 +17,7 @@ import {
 
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { API_CONFIG } from '@/constants/config';
+import { useApiMessages } from '@/hooks/use-api-messages';
 import { useAppTheme } from '@/providers/app-theme-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -24,6 +25,7 @@ export default function ForgotPasswordScreen() {
   const router = useRouter();
   const { palette } = useAppTheme();
   const { t } = useLocalization();
+  const { translateError } = useApiMessages();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -61,10 +63,12 @@ export default function ForgotPasswordScreen() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        const message =
-          payload?.message ??
-          payload?.error ??
-          `Server returned ${response.status}: ${response.statusText}`;
+        const apiMessage = payload?.message ?? payload?.error;
+        // Traducir el mensaje de la API al idioma actual
+        const message = translateError(
+          apiMessage, 
+          `Server returned ${response.status}: ${response.statusText}`
+        );
         throw new Error(message);
       }
 
@@ -73,7 +77,8 @@ export default function ForgotPasswordScreen() {
       if (data && data.status === 'success') {
         setSuccess(true);
       } else if (data && data.status === 'error') {
-        throw new Error(data.message ?? t('auth.forgotPasswordError'));
+        const errorMessage = translateError(data.message || '', t('auth.forgotPasswordError'));
+        throw new Error(errorMessage);
       } else {
         setSuccess(true);
       }
@@ -82,10 +87,12 @@ export default function ForgotPasswordScreen() {
       let message: string;
       
       if (caughtError instanceof Error) {
-        message = caughtError.message;
         // If it's a network error, provide a more user-friendly message
         if (caughtError.message.includes('Network') || caughtError.message.includes('fetch')) {
           message = t('auth.networkError') ?? 'Network error. Please check your connection.';
+        } else {
+          // Traducir el mensaje de error de la API
+          message = translateError(caughtError.message, t('auth.forgotPasswordErrorFallback'));
         }
       } else {
         message = t('auth.forgotPasswordErrorFallback');

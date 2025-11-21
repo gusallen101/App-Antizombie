@@ -17,6 +17,7 @@ import {
 
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { API_CONFIG } from '@/constants/config';
+import { useApiMessages } from '@/hooks/use-api-messages';
 import { useAppTheme } from '@/providers/app-theme-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -24,6 +25,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const { palette } = useAppTheme();
   const { t } = useLocalization();
+  const { translateError } = useApiMessages();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -76,11 +78,9 @@ export default function LoginScreen() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        const message =
-          payload?.message ??
-          payload?.error ??
-          t('auth.loginError') ??
-          'There was a problem signing in.';
+        const apiMessage = payload?.message ?? payload?.error;
+        // Traducir el mensaje de la API al idioma actual
+        const message = translateError(apiMessage, t('auth.loginError'));
         throw new Error(message);
       }
 
@@ -110,8 +110,9 @@ export default function LoginScreen() {
 
       router.replace('/(tabs)/home');
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : t('auth.loginErrorFallback');
+      const message = caughtError instanceof Error 
+        ? translateError(caughtError.message, t('auth.loginErrorFallback'))
+        : t('auth.loginErrorFallback');
       setError(message);
     } finally {
       setLoading(false);

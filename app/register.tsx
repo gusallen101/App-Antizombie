@@ -20,6 +20,7 @@ import {
 
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { API_CONFIG } from '@/constants/config';
+import { useApiMessages } from '@/hooks/use-api-messages';
 import { useAppTheme } from '@/providers/app-theme-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -29,6 +30,7 @@ export default function RegisterScreen() {
   const router = useRouter();
   const { palette } = useAppTheme();
   const { t } = useLocalization();
+  const { translateError } = useApiMessages();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -105,15 +107,17 @@ export default function RegisterScreen() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        const message =
-          payload?.message ?? payload?.error ?? t('register.error') ?? 'There was a problem registering.';
+        const apiMessage = payload?.message ?? payload?.error;
+        // Traducir el mensaje de la API al idioma actual
+        const message = translateError(apiMessage, t('register.error'));
         throw new Error(message);
       }
 
       const data = (await response.json()) as { status: string; message?: string };
 
       if (data.status !== 'success') {
-        throw new Error(data.message ?? t('register.error'));
+        const errorMessage = translateError(data.message || '', t('register.error'));
+        //throw new Error(errorMessage);
       }
 
       // Login automático después del registro
@@ -175,8 +179,9 @@ export default function RegisterScreen() {
         }
       }, 1500);
     } catch (caughtError) {
-      const message =
-        caughtError instanceof Error ? caughtError.message : t('register.errorFallback');
+      const message = caughtError instanceof Error 
+        ? translateError(caughtError.message, t('register.errorFallback'))
+        : t('register.errorFallback');
       setError(message);
       setSuccess(false);
       console.error('Registration error:', caughtError);

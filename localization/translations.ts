@@ -17,6 +17,26 @@ export const translations: Record<'en' | 'es', TranslationDictionary> = {
       ok: 'OK',
       cancel: 'Cancel',
     },
+    api: {
+      errors: {
+        validateNameEmailPassword: 'Validate that name, email and password are correct.',
+        incorrectEmailFormat: 'Incorrect email format.',
+        processingError: 'There was a problem processing your request. Please try again later.',
+        validateEmailPassword: 'Validate that the email and password are correct.',
+        incorrectUserOrPassword: 'Incorrect user or password.',
+        avatarDataEmpty: 'Avatar data is empty.',
+        emailEmpty: 'Email is empty.',
+        userCategoryInTable: 'The user id and category id are in the table.',
+        incorrectEmailOrToken: 'Incorrect email or token.',
+      },
+      success: {
+        generic: 'Success',
+        created: 'Created successfully',
+        updated: 'Updated successfully',
+        deleted: 'Deleted successfully',
+        saved: 'Saved successfully',
+      },
+    },
     login: {
       welcome: 'Welcome',
       description:
@@ -373,6 +393,26 @@ export const translations: Record<'en' | 'es', TranslationDictionary> = {
       goBack: 'Regresar',
       ok: 'OK',
       cancel: 'Cancelar',
+    },
+    api: {
+      errors: {
+        validateNameEmailPassword: 'Valida que el nombre, correo y contraseña sean correctos.',
+        incorrectEmailFormat: 'Formato de correo incorrecto.',
+        processingError: 'Hubo un problema procesando tu solicitud. Por favor intenta más tarde.',
+        validateEmailPassword: 'Valida que el correo y contraseña sean correctos.',
+        incorrectUserOrPassword: 'Usuario o contraseña incorrectos.',
+        avatarDataEmpty: 'Los datos del avatar están vacíos.',
+        emailEmpty: 'El correo está vacío.',
+        userCategoryInTable: 'El id de usuario y categoría ya están en la tabla.',
+        incorrectEmailOrToken: 'Correo o token incorrectos.',
+      },
+      success: {
+        generic: 'Éxito',
+        created: 'Creado exitosamente',
+        updated: 'Actualizado exitosamente',
+        deleted: 'Eliminado exitosamente',
+        saved: 'Guardado exitosamente',
+      },
     },
     login: {
       welcome: 'Bienvenido',
