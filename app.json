@@ -2,7 +2,7 @@
   "expo": {
     "name": "¿Soy Zombie?",
     "slug": "soy-zombie",
-    "version": "5.0.0",
+    "version": "5.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
     "scheme": "zombieapprn",

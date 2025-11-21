@@ -274,10 +274,14 @@ export default function CompleteTasksScreen() {
     );
   };
 
+  // Desactivar scroll cuando hay tarjetas para no interferir con los swipes
+  const shouldEnableScroll = !currentCard || loading || error;
+
   return (
     <AppScreen
       titleKey="tabs.completeTasks"
       contentContainerStyle={styles.screenContent}
+      scrollEnabled={shouldEnableScroll}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}

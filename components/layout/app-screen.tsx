@@ -17,9 +17,10 @@ type Props = {
   children?: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
   refreshControl?: ReactElement<RefreshControlProps>;
+  scrollEnabled?: boolean;
 };
 
-export function AppScreen({ titleKey, children, contentContainerStyle, refreshControl }: Props) {
+export function AppScreen({ titleKey, children, contentContainerStyle, refreshControl, scrollEnabled = true }: Props) {
   const { palette } = useAppTheme();
   const { t } = useLocalization();
 
@@ -40,6 +41,7 @@ export function AppScreen({ titleKey, children, contentContainerStyle, refreshCo
           },
           contentContainerStyle,
         ]}
+        scrollEnabled={scrollEnabled}
         refreshControl={refreshControl}>
         {children}
       </ScrollView>

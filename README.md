@@ -51,6 +51,6 @@ Join our community of developers creating universal apps.
 
 
 Commands for stores:
-npx eas build --platform android --profile production 
-npx eas build --platform ios --profile production   
-npx eas submit --platform ios --profile production  
+npx eas build --platform android --profile production
+npx eas build --platform ios --profile production
+npx eas submit --platform ios --profile production
