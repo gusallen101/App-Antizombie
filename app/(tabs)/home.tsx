@@ -148,11 +148,8 @@ export default function HomeScreen() {
       }
     >
       <View style={[styles.card, { backgroundColor: palette.surface }]}>
-        <Text style={[styles.heading, { color: palette.textOnSurface }]}>
+        <Text style={[styles.heading, { color: palette.textOnSurface }, { textAlign: 'center' }]}>
           {t('screens.home.zombieHeading')}
-        </Text>
-        <Text style={[styles.levelLabel, { color: palette.inputPlaceholder }]}>
-          {t('screens.home.zombieLevelLabel', { level: '' })}
         </Text>
         <View style={styles.zombieRow}>
           <Image source={illustrationSource} style={styles.illustration} resizeMode="contain" />
