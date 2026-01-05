@@ -50,7 +50,22 @@ Join our community of developers creating universal apps.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
 
 
-Commands for stores:
+## 📚 Documentación
+
+### Para Desarrolladores
+- **[Arquitectura de la Aplicación](docs/ARCHITECTURE.md)**: Guía completa de la arquitectura, patrones, y estructura del proyecto
+- **[Build y Despliegue con EAS](docs/EAS_BUILD_DEPLOY.md)**: Proceso completo de builds y despliegue a tiendas
+
+### Comandos Rápidos para Builds
+
+```bash
+# Build de producción Android
 npx eas build --platform android --profile production
+
+# Build de producción iOS
 npx eas build --platform ios --profile production
+
+# Submit a tiendas
+npx eas submit --platform android --profile production
 npx eas submit --platform ios --profile production
+```
