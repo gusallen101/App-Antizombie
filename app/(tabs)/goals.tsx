@@ -28,12 +28,21 @@ import {
   type GoalCategoryDescriptor,
   type GoalCategoryKey,
 } from '@/constants/goals';
+
 import { useAppTheme } from '@/providers/app-theme-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
+type GoalForm = {
+  name: string;
+  tasks: string[];
+  frequency: string;
+};
+
+const MAX_GOALS = 5;
+
 export default function GoalsScreen() {
   const { t } = useLocalization();
-  const { palette } = useAppTheme();
+  const { colorScheme, palette } = useAppTheme();
   const { width } = useWindowDimensions();
 
   const horizontalPadding = 24;
@@ -43,9 +52,10 @@ export default function GoalsScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<GoalCategoryKey>(DEFAULT_GOAL_CATEGORY);
-  const [goalName, setGoalName] = useState('');
-  const [tasks, setTasks] = useState<string[]>(['']);
   const [saving, setSaving] = useState(false);
+  const [goalsForm, setGoalsForm] = useState<GoalForm[]>([
+    { name: '', tasks: [''], frequency: '1' },
+  ]);
 
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 60 }).current;
 
@@ -69,8 +79,7 @@ export default function GoalsScreen() {
 
   const openModal = useCallback((category: GoalCategoryKey) => {
     setSelectedCategory(category);
-    setGoalName('');
-    setTasks(['']);
+    setGoalsForm([{ name: '', tasks: [''], frequency: '1' }]);
     setModalVisible(true);
   }, []);
 
@@ -78,29 +87,71 @@ export default function GoalsScreen() {
     setModalVisible(false);
   }, []);
 
-  const handleTaskChange = useCallback((value: string, index: number) => {
-    setTasks((prev) => prev.map((task, idx) => (idx === index ? value : task)));
-  }, []);
+  const addGoalForm = () => {
+    if (goalsForm.length >= MAX_GOALS) return;
+    setGoalsForm((prev) => [...prev, { name: '', tasks: [''], frequency: '1' }]);
+  };
 
-  const handleAddTaskField = useCallback(() => {
-    setTasks((prev) => [...prev, '']);
-  }, []);
+  const removeGoalForm = (index: number) => {
+    setGoalsForm((prev) => prev.filter((_, i) => i !== index));
+  };
 
-  const handleRemoveTaskField = useCallback((index: number) => {
-    setTasks((prev) => (prev.length === 1 ? prev : prev.filter((_, idx) => idx !== index)));
-  }, []);
+  const updateGoalNameForm = (value: string, index: number) => {
+    setGoalsForm((prev) =>
+      prev.map((g, i) => (i === index ? { ...g, name: value } : g)),
+    );
+  };
+
+  const updateFrequencyForm = (value: string, index: number) => {
+    let numericValue = value.replace(/[^0-9]/g, '');
+    const val = Number(numericValue);
+    if (val > 7) numericValue = '7';
+    if (numericValue !== '' && val < 1) numericValue = '1';
+    
+    setGoalsForm((prev) =>
+      prev.map((g, i) => (i === index ? { ...g, frequency: numericValue } : g)),
+    );
+  };
+
+  const addTaskForm = (goalIndex: number) => {
+    setGoalsForm((prev) =>
+      prev.map((g, i) =>
+        i === goalIndex ? { ...g, tasks: [...g.tasks, ''] } : g,
+      ),
+    );
+  };
+
+  const updateTaskForm = (goalIndex: number, taskIndex: number, value: string) => {
+    setGoalsForm((prev) =>
+      prev.map((g, i) =>
+        i === goalIndex
+          ? { ...g, tasks: g.tasks.map((t, ti) => (ti === taskIndex ? value : t)) }
+          : g,
+      ),
+    );
+  };
+
+  const removeTaskForm = (goalIndex: number, taskIndex: number) => {
+    setGoalsForm((prev) =>
+      prev.map((g, i) =>
+        i === goalIndex
+          ? { ...g, tasks: g.tasks.length === 1 ? g.tasks : g.tasks.filter((_, ti) => ti !== taskIndex) }
+          : g,
+      ),
+    );
+  };
 
   const handleSaveGoal = useCallback(async () => {
-    const trimmedName = goalName.trim();
-    const formattedTasks = tasks.map((task) => task.trim()).filter(Boolean);
+    const validGoals = goalsForm
+      .map((goal) => ({
+        name: goal.name.trim(),
+        tasks: goal.tasks.map((t) => t.trim()).filter(Boolean),
+        frequency: goal.frequency || '1',
+      }))
+      .filter((goal) => goal.name && goal.tasks.length > 0);
 
-    if (!trimmedName) {
+    if (validGoals.length === 0) {
       Alert.alert(t('screens.goals.form.errorTitle'), t('screens.goals.form.validationName'));
-      return;
-    }
-
-    if (formattedTasks.length === 0) {
-      Alert.alert(t('screens.goals.form.errorTitle'), t('screens.goals.form.validationTask'));
       return;
     }
 
@@ -111,117 +162,83 @@ export default function GoalsScreen() {
         AsyncStorage.getItem('@auth:userId'),
       ]);
 
-      if (!apikey || !userId) {
-        throw new Error(t('auth.loginErrorFallback'));
-      }
+      if (!apikey || !userId) throw new Error(t('auth.loginErrorFallback'));
 
-      const params = new URLSearchParams();
-      params.append('id_usuario', userId);
-      params.append('etiqueta', trimmedName);
-      params.append('tipo', String(GOAL_CATEGORY_TYPE[selectedCategory]));
-      params.append('tareas', formattedTasks.join('|'));
+      for (const goal of validGoals) {
+        const params = new URLSearchParams();
+        params.append('id_usuario', userId);
+        params.append('etiqueta', goal.name);
+        params.append('tareas', goal.tasks.join('|'));
+        params.append('tipo', String(GOAL_CATEGORY_TYPE[selectedCategory]));
+        params.append('frecuencia', goal.frequency);
 
-      const response = await fetch(`${API_CONFIG.baseUrl}meta`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          apikey,
-        },
-        body: params.toString(),
-      });
+        const response = await fetch(`${API_CONFIG.baseUrl}meta`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            apikey,
+          },
+          body: params.toString(),
+        });
 
-      if (!response.ok) {
-        throw new Error(t('screens.goals.form.errorTitle'));
+        if (!response.ok) throw new Error(t('screens.goals.form.errorTitle'));
       }
 
       Alert.alert(t('screens.goals.form.successTitle'), t('screens.goals.form.successMessage'));
       closeModal();
+      setGoalsForm([{ name: '', tasks: [''], frequency: '1' }]);
     } catch (error) {
-      Alert.alert(
-        t('screens.goals.form.errorTitle'),
-        error instanceof Error ? error.message : t('auth.loginErrorFallback'),
-      );
+      Alert.alert(t('screens.goals.form.errorTitle'), error instanceof Error ? error.message : t('auth.loginErrorFallback'));
     } finally {
       setSaving(false);
     }
-  }, [closeModal, goalName, selectedCategory, t, tasks]);
+  }, [closeModal, selectedCategory, t, goalsForm]);
 
-  const renderCard = ({
-    item,
-  }: {
-    item: GoalCategoryDescriptor & { title: string; description: string };
-  }) => (
+  const renderCard = ({ item }: { item: GoalCategoryDescriptor & { title: string; description: string } }) => (
     <LinearGradient
       colors={item.gradient}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[styles.card, { width: cardWidth }]}
     >
+      <View style={[styles.cardBgCircle, { backgroundColor: `${item.accent}15` }]} />
+      
       <View style={styles.cardHeader}>
-        <View style={[styles.iconPill, { backgroundColor: `${item.accent}20` }]}>
-          <Ionicons name={item.icon} size={28} color={item.accent} />
+        <View style={[styles.mainIconWrapper, { shadowColor: item.accent }]}>
+          <LinearGradient colors={[`${item.accent}40`, 'transparent']} style={styles.iconGlow} />
+          <Ionicons name={item.icon} size={64} color={item.accent} />
         </View>
-        <Text style={[styles.cardTitle, { color: item.accent }]}>{item.title}</Text>
-        <Text style={[styles.cardDescription, { color: `${item.accent}cc` }]}>{item.description}</Text>
+        <View style={styles.textContainer}>
+          <Text style={[styles.cardTitle, { color: item.accent }]}>{item.title}</Text>
+          <Text style={[styles.cardDescription, { color: `${item.accent}cc` }]}>{item.description}</Text>
+        </View>
       </View>
+
       <View style={styles.cardActions}>
         <TouchableOpacity
-          activeOpacity={0.85}
+          activeOpacity={0.8}
           style={[styles.primaryButton, { backgroundColor: item.accent }]}
           onPress={() => openModal(item.key)}
-          onPress={() => openModal(item.key)}
         >
-          <Ionicons name="add" size={18} color="#FFFFFF" />
+          <Ionicons name="add" size={20} color="#FFFFFF" />
           <Text style={styles.primaryButtonLabel}>{t('screens.goals.add')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          activeOpacity={0.85}
-          style={[styles.secondaryButton, { borderColor: item.accent }]}
-          onPress={() =>
-            router.push({
-              pathname: '/view-goals',
-              params: { category: item.key },
-            })
-          }
+          activeOpacity={0.8}
+          style={[styles.secondaryButton, { borderColor: `${item.accent}40` }]}
+          onPress={() => router.push({ pathname: '/view-goals', params: { category: item.key } })}
         >
-          <Ionicons name="eye-outline" size={18} color={item.accent} />
-          <Text style={[styles.secondaryButtonLabel, { color: item.accent }]}>
-            {t('screens.goals.view')}
-          </Text>
+          <Text style={[styles.secondaryButtonLabel, { color: item.accent }]}>{t('screens.goals.view')}</Text>
         </TouchableOpacity>
       </View>
     </LinearGradient>
   );
 
-  const renderIndicator = () => (
-    <View style={styles.dots}>
-      {categories.map((category, index) => (
-        <View
-          key={category.key}
-          style={[
-            styles.dot,
-            {
-              backgroundColor:
-                index === activeIndex ? palette.primary : `${palette.textSecondary}40`,
-            },
-          ]}
-        />
-      ))}
-    </View>
-  );
-
   return (
-    <AppScreen titleKey="tabs.goals">
+    <AppScreen titleKey="tabs.goals" contentContainerStyle={styles.screenContent}>
       <View style={[styles.heroCard, { backgroundColor: palette.surface }]}>
-        <Text style={[styles.heroTitle, { color: palette.textOnSurface }]}>
-          {t('screens.goals.headline')}
-        </Text>
-        <Text style={[styles.heroDescription, { color: palette.inputPlaceholder }]}>
-          {t('screens.goals.intro')}
-        </Text>
-        <Text style={[styles.heroSubtitle, { color: palette.textOnSurface }]}>
-          {t('screens.goals.subtitle')}
-        </Text>
+        <Text style={[styles.heroTitle, { color: palette.textOnSurface }]}>{t('screens.goals.headline')}</Text>
+        <Text style={[styles.heroDescription, { color: palette.inputPlaceholder }]}>{t('screens.goals.intro')}</Text>
       </View>
 
       <View style={styles.carouselWrapper}>
@@ -231,133 +248,80 @@ export default function GoalsScreen() {
           keyExtractor={(item) => item.key}
           horizontal
           showsHorizontalScrollIndicator={false}
-            ItemSeparatorComponent={() => <View style={{ width: gap }} />}
-            pagingEnabled
-            snapToAlignment="start"
-            decelerationRate="fast"
-            snapToInterval={cardWidth + gap}
+          ItemSeparatorComponent={() => <View style={{ width: gap }} />}
+          pagingEnabled
+          snapToInterval={cardWidth + gap}
+          decelerationRate="fast"
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
         />
-        {renderIndicator()}
+        <View style={styles.dots}>
+          {categories.map((cat, i) => (
+            <View key={cat.key} style={[styles.dot, { backgroundColor: i === activeIndex ? palette.primary : `${palette.textSecondary}40` }]} />
+          ))}
+        </View>
       </View>
 
+      {/* MODAL FORMULARIO */}
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            style={styles.modalWrapper}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
+          <KeyboardAvoidingView style={styles.modalWrapper} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={[styles.modalCard, { backgroundColor: palette.surface }]}>
               <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: palette.textOnSurface }]}>
+                <Text style={[styles.modalTitle, { color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }]}>
                   {t('screens.goals.form.title')}
                 </Text>
-                <TouchableOpacity onPress={closeModal} hitSlop={16}>
-                  <Ionicons name="close" size={20} color={palette.inputPlaceholder} />
+                <TouchableOpacity onPress={closeModal}>
+                  <Ionicons name="close" size={24} color={colorScheme === 'light' ? '#000000' : palette.inputPlaceholder} />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView
-                contentContainerStyle={styles.modalContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled">
-                <Text style={[styles.label, { color: palette.textOnSurface }]}>
-                  {t('screens.goals.form.categoryLabel')}
-                </Text>
-                <View style={styles.categoryRow}>
-                  {categories.map((category) => (
-                    <TouchableOpacity
-                      key={category.key}
-                      style={[
-                        styles.categoryPill,
-                        {
-                          borderColor:
-                            selectedCategory === category.key ? palette.primary : palette.border,
-                          backgroundColor:
-                            selectedCategory === category.key ? `${palette.primary}15` : 'transparent',
-                        },
-                      ]}
-                      onPress={() => setSelectedCategory(category.key as GoalCategory['key'])}
-                    >
-                      <Text
-                        style={[
-                          styles.categoryPillLabel,
-                          {
-                            color:
-                              selectedCategory === category.key ? palette.primary : palette.textSecondary,
-                          },
-                        ]}
-                      >
-                        {category.title}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Text style={[styles.label, { color: palette.textOnSurface }]}>
-                  {t('screens.goals.form.nameLabel')}
-                </Text>
-                <TextInput
-                  style={[styles.input, { borderColor: palette.border, color: palette.textOnSurface }]}
-                  placeholder={t('screens.goals.form.namePlaceholder')}
-                  placeholderTextColor={palette.textSecondary}
-                  value={goalName}
-                  onChangeText={setGoalName}
-                />
-
-                <Text style={[styles.label, { color: palette.textOnSurface }]}>
-                  {t('screens.goals.form.taskLabel')}
-                </Text>
-
-                {tasks.map((task, index) => (
-                  <View key={`task-${index}`} style={styles.taskRow}>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        styles.taskInput,
-                        { borderColor: palette.border, color: palette.textOnSurface },
-                      ]}
-                      placeholder={t('screens.goals.form.taskPlaceholder')}
-                      placeholderTextColor={palette.textSecondary}
-                      value={task}
-                      onChangeText={(value) => handleTaskChange(value, index)}
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {goalsForm.map((goal, goalIndex) => (
+                  <View key={`goal-${goalIndex}`} style={styles.goalSection}>
+                    <Text style={[styles.label, { color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }]}>
+                      {t('screens.goals.form.nameLabel')}
+                    </Text>
+                    <TextInput 
+                      style={[styles.input, { borderColor: colorScheme === 'light' ? '#333333' : palette.border, color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }]} 
+                      value={goal.name} 
+                      onChangeText={(v) => updateGoalNameForm(v, goalIndex)}
+                      placeholderTextColor={colorScheme === 'light' ? '#666666' : palette.textSecondary}
                     />
-                    {tasks.length > 1 && (
-                      <TouchableOpacity
-                        style={styles.removeTaskButton}
-                        onPress={() => handleRemoveTaskField(index)}
-                      >
-                        <Ionicons name="trash-outline" size={18} color={palette.accent} />
-                      </TouchableOpacity>
-                    )}
+                    
+                    <Text style={[styles.label, { color: colorScheme === 'light' ? '#000000' : palette.textOnSurface, marginTop: 12 }]}>
+                      {t('screens.goals.form.frequencyLabel')}
+                    </Text>
+                    <TextInput 
+                      style={[styles.input, { borderColor: colorScheme === 'light' ? '#333333' : palette.border, color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }]} 
+                      value={goal.frequency} 
+                      onChangeText={(v) => updateFrequencyForm(v, goalIndex)} 
+                      keyboardType="number-pad" 
+                      maxLength={1} 
+                      placeholderTextColor={colorScheme === 'light' ? '#666666' : palette.textSecondary}
+                    />
+                    
+                    {goal.tasks.map((task, taskIndex) => (
+                      <View key={`task-${goalIndex}-${taskIndex}`} style={styles.taskRow}>
+                        <TextInput 
+                          style={[styles.input, styles.taskInput, { borderColor: colorScheme === 'light' ? '#333333' : palette.border, color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }]} 
+                          value={task} 
+                          onChangeText={(v) => updateTaskForm(goalIndex, taskIndex, v)} 
+                          placeholder={t('screens.goals.form.taskPlaceholder')} 
+                          placeholderTextColor={colorScheme === 'light' ? '#666666' : palette.textSecondary}
+                        />
+                        {goal.tasks.length > 1 && <TouchableOpacity onPress={() => removeTaskForm(goalIndex, taskIndex)}><Ionicons name="trash" size={20} color={palette.accent} /></TouchableOpacity>}
+                      </View>
+                    ))}
+                    <TouchableOpacity style={styles.addTaskButton} onPress={() => addTaskForm(goalIndex)}><Ionicons name="add" size={20} color={palette.primary} /><Text style={{ color: palette.primary }}>{t('screens.goals.form.taskAdd')}</Text></TouchableOpacity>
                   </View>
                 ))}
-
-                <TouchableOpacity style={styles.addTaskButton} onPress={handleAddTaskField}>
-                  <Ionicons name="add-circle-outline" size={18} color={palette.primary} />
-                  <Text style={[styles.addTaskLabel, { color: palette.primary }]}>
-                    {t('screens.goals.form.taskAdd')}
-                  </Text>
-                </TouchableOpacity>
+                {goalsForm.length < MAX_GOALS && <TouchableOpacity style={styles.addGoalButton} onPress={addGoalForm}><Text style={{ color: palette.primary, fontWeight: 'bold' }}>{t('screens.goals.form.addGoal')}</Text></TouchableOpacity>}
               </ScrollView>
 
-              <View style={styles.modalFooter}>
-                <TouchableOpacity style={styles.cancelButton} onPress={closeModal} disabled={saving}>
-                <Text style={[styles.cancelLabel, { color: palette.inputPlaceholder }]}>
-                  {t('screens.goals.form.cancel')}
-                </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.saveButton, { backgroundColor: palette.primary }]}
-                  onPress={handleSaveGoal}
-                  disabled={saving}
-                >
-                  <Text style={[styles.saveLabel, { color: palette.buttonText }]}>
-                    {saving ? '…' : t('screens.goals.form.save')}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity style={[styles.saveButton, { backgroundColor: palette.primary }]} onPress={handleSaveGoal} disabled={saving}>
+                <Text style={{ color: palette.buttonText, fontWeight: 'bold' }}>{saving ? '...' : t('screens.goals.form.save')}</Text>
+              </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
         </View>
@@ -367,206 +331,36 @@ export default function GoalsScreen() {
 }
 
 const styles = StyleSheet.create({
-  heroCard: {
-    borderRadius: 28,
-    paddingHorizontal: 24,
-    paddingVertical: 28,
-    marginBottom: 24,
-    shadowColor: '#000000',
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
-  },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  heroDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 12,
-  },
-  heroSubtitle: {
-    fontSize: 13,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  carouselWrapper: {
-    flex: 1,
-  },
-  card: {
-    borderRadius: 32,
-    padding: 24,
-    minHeight: 360,
-    justifyContent: 'space-between',
-  },
-  cardHeader: {
-    gap: 12,
-  },
-  iconPill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-  },
-  cardTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  cardDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  cardActions: {
-    gap: 12,
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 18,
-  },
-  primaryButtonLabel: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    backgroundColor: '#FFFFFFD0',
-  },
-  secondaryButtonLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  dots: {
-    marginTop: 18,
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: '#00000080',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  modalWrapper: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  modalCard: {
-    borderRadius: 28,
-    padding: 20,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  modalContent: {
-    gap: 12,
-    paddingVertical: 4,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  input: {
-    borderWidth: 1.5,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  taskRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  taskInput: {
-    flex: 1,
-  },
-  removeTaskButton: {
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: '#FDECEC',
-  },
-  addTaskButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-  },
-  addTaskLabel: {
-    fontWeight: '600',
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  categoryPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1.5,
-  },
-  categoryPillLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 16,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  cancelLabel: {
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  saveButton: {
-    flex: 1.4,
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  saveLabel: {
-    fontWeight: '700',
-    fontSize: 16,
-  },
+  screenContent: { paddingBottom: 100 },
+  heroCard: { borderRadius: 28, padding: 24, marginBottom: 24, marginHorizontal: 24 },
+  heroTitle: { fontSize: 26, fontWeight: '800' },
+  heroDescription: { fontSize: 15, marginTop: 8 },
+  carouselWrapper: { flex: 1, minHeight: 450 },
+  card: { borderRadius: 40, padding: 30, height: 420, justifyContent: 'space-between', alignItems: 'center', overflow: 'hidden' },
+  cardBgCircle: { position: 'absolute', top: -50, right: -50, width: 200, height: 200, borderRadius: 100 },
+  cardHeader: { alignItems: 'center', zIndex: 2 },
+  mainIconWrapper: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', marginBottom: 20, elevation: 8, shadowOpacity: 0.2 },
+  iconGlow: { position: 'absolute', width: 140, height: 140, borderRadius: 70 },
+  textContainer: { alignItems: 'center' },
+  cardTitle: { fontSize: 32, fontWeight: '900', marginBottom: 8 },
+  cardDescription: { fontSize: 16, textAlign: 'center', fontWeight: '500' },
+  cardActions: { width: '100%', gap: 10, zIndex: 2 },
+  primaryButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 20 },
+  primaryButtonLabel: { color: '#FFF', fontSize: 16, fontWeight: '800', textTransform: 'uppercase' },
+  secondaryButton: { paddingVertical: 14, borderRadius: 20, borderWidth: 1.5, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center' },
+  secondaryButtonLabel: { fontSize: 14, fontWeight: '700', textTransform: 'uppercase' },
+  dots: { marginTop: 20, flexDirection: 'row', gap: 10, justifyContent: 'center' },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  modalOverlay: { flex: 1, backgroundColor: '#00000080', justifyContent: 'center', padding: 20 },
+  modalCard: { borderRadius: 32, padding: 24, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold' },
+  goalSection: { marginBottom: 20 },
+  label: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 8 },
+  input: { borderWidth: 1.5, borderRadius: 16, padding: 14, fontSize: 16 },
+  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  taskInput: { flex: 1 },
+  addTaskButton: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+  addGoalButton: { padding: 16, alignItems: 'center', marginTop: 10 },
+  saveButton: { paddingVertical: 16, borderRadius: 20, alignItems: 'center', marginTop: 10 },
 });
-
-

@@ -98,9 +98,33 @@ export function AppDrawer() {
         route: '/(tabs)/pending',
       },
       {
+        labelKey: 'tabs.notifications',
+        icon: 'notifications-outline',
+        route: '/(tabs)/notifications',
+      },
+      {
         labelKey: 'tabs.settings',
         icon: 'settings-outline',
         route: '/(tabs)/settings',
+      },
+      {
+        labelKey: 'menu.faq',
+        icon: 'help-circle-outline',
+        route: '/(tabs)/faq' as Href,
+      },
+      {
+        labelKey: 'menu.restartOnboarding',
+        icon: 'ribbon-outline',
+        action: async () => {
+          try {
+            await AsyncStorage.removeItem('@app:hasSeenOnboarding');
+            await AsyncStorage.removeItem('@tutorial:seen_steps');
+            await AsyncStorage.setItem('@tutorial:active', 'true');
+            router.replace('/(tabs)/home');
+          } catch (error) {
+            console.warn('Failed to reset onboarding', error);
+          }
+        },
       },
       {
         labelKey: 'menu.signOut',
@@ -275,4 +299,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

@@ -3,6 +3,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Calendar from 'expo-calendar';
 import * as IntentLauncher from 'expo-intent-launcher';
 import React, { useCallback, useMemo, useState } from 'react';
+import { KeyboardAvoidingView } from 'react-native';
 import {
   Alert,
   Linking,
@@ -13,6 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native';
 
 import { AppScreen } from '@/components/layout/app-screen';
@@ -171,90 +173,107 @@ export default function RemindersScreen() {
 
   return (
     <AppScreen titleKey="tabs.reminders">
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.description, { color: palette.textSecondary }]}>
-          {t('screens.remindersScreen.description')}
-        </Text>
-
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.label, { color: palette.textPrimary }]}>
-            {t('screens.remindersScreen.nameLabel')}
-          </Text>
-          <TextInput
-            style={[styles.input, { borderColor: palette.border, color: palette.textPrimary }]}
-            placeholder={t('screens.remindersScreen.nameLabel')}
-            placeholderTextColor={palette.textSecondary}
-            value={title}
-            onChangeText={setTitle}
-          />
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.label, { color: palette.textPrimary }]}>
-            {t('screens.remindersScreen.descriptionLabel')}
-          </Text>
-          <TextInput
-            style={[
-              styles.input,
-              styles.multilineInput,
-              { borderColor: palette.border, color: palette.textPrimary },
-            ]}
-            placeholder={t('screens.remindersScreen.descriptionLabel')}
-            placeholderTextColor={palette.textSecondary}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            numberOfLines={3}
-          />
-        </View>
-
-        <View style={styles.row}>
-          <View style={[styles.fieldGroup, styles.rowItem]}>
-            <Text style={[styles.label, { color: palette.textPrimary }]}>
-              {t('screens.remindersScreen.dateLabel')}
-            </Text>
-            <TouchableOpacity
-              style={[styles.selector, { borderColor: palette.border }]}
-              onPress={() => openPicker('date')}
-            >
-              <Text style={[styles.selectorLabel, { color: palette.textPrimary }]}>{formattedDate}</Text>
-              <Ionicons name="calendar-outline" size={18} color={palette.inputPlaceholder} />
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.fieldGroup, styles.rowItem]}>
-            <Text style={[styles.label, { color: palette.textPrimary }]}>
-              {t('screens.remindersScreen.timeLabel')}
-            </Text>
-            <TouchableOpacity
-              style={[styles.selector, { borderColor: palette.border }]}
-              onPress={() => openPicker('time')}
-            >
-              <Text style={[styles.selectorLabel, { color: palette.textPrimary }]}>{formattedTime}</Text>
-              <Ionicons name="time-outline" size={18} color={palette.inputPlaceholder} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.primaryButton, { backgroundColor: palette.primary }]}
-          onPress={handleSaveReminder}
-          disabled={saving}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: Platform.OS === 'ios' ? 108 : 96 }, // Ajustado para la barra de pestañas flotante
+          ]}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>
-            {saving ? '…' : t('screens.remindersScreen.save')}
+          <Text style={[styles.description, { color: palette.textSecondary }]}>
+            {t('screens.remindersScreen.description')}
           </Text>
-        </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.secondaryButton, { borderColor: palette.primary }]}
-          onPress={handleOpenCalendar}
-        >
-          <Ionicons name="eye-outline" size={18} color={palette.primary} />
-          <Text style={[styles.secondaryButtonLabel, { color: palette.primary }]}>
-            {t('screens.remindersScreen.viewCalendar')}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.label, { color: palette.textPrimary }]}>
+              {t('screens.remindersScreen.nameLabel')}
+            </Text>
+            <TextInput
+              style={[styles.input, { borderColor: palette.border, color: palette.textPrimary }]}
+              placeholder={t('screens.remindersScreen.nameLabel')}
+              placeholderTextColor={palette.textSecondary}
+              value={title}
+              onChangeText={setTitle}
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.label, { color: palette.textPrimary }]}>
+              {t('screens.remindersScreen.descriptionLabel')}
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.multilineInput,
+                { borderColor: palette.border, color: palette.textPrimary },
+              ]}
+              placeholder={t('screens.remindersScreen.descriptionLabel')}
+              placeholderTextColor={palette.textSecondary}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={3}
+            />
+          </View>
+
+          <View style={styles.row}>
+            <View style={[styles.fieldGroup, styles.rowItem]}>
+              <Text style={[styles.label, { color: palette.textPrimary }]}>
+                {t('screens.remindersScreen.dateLabel')}
+              </Text>
+              <TouchableOpacity
+                style={[styles.selector, { borderColor: palette.border }]}
+                onPress={() => openPicker('date')}
+              >
+                <Text style={[styles.selectorLabel, { color: palette.textPrimary }]}>
+                  {formattedDate}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color={palette.inputPlaceholder} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.fieldGroup, styles.rowItem]}>
+              <Text style={[styles.label, { color: palette.textPrimary }]}>
+                {t('screens.remindersScreen.timeLabel')}
+              </Text>
+              <TouchableOpacity
+                style={[styles.selector, { borderColor: palette.border }]}
+                onPress={() => openPicker('time')}
+              >
+                <Text style={[styles.selectorLabel, { color: palette.textPrimary }]}>
+                  {formattedTime}
+                </Text>
+                <Ionicons name="time-outline" size={18} color={palette.inputPlaceholder} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.primaryButton, { backgroundColor: palette.primary }]}
+            onPress={handleSaveReminder}
+            disabled={saving}
+          >
+            <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>
+              {saving ? '…' : t('screens.remindersScreen.save')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.secondaryButton, { borderColor: palette.primary }]}
+            onPress={handleOpenCalendar}
+          >
+            <Ionicons name="eye-outline" size={18} color={palette.primary} />
+            <Text style={[styles.secondaryButtonLabel, { color: palette.primary }]}>
+              {t('screens.remindersScreen.viewCalendar')}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {pickerMode && (
         <View style={styles.pickerOverlay}>
@@ -267,17 +286,21 @@ export default function RemindersScreen() {
               textColor={palette.textPrimary}
               themeVariant={colorScheme}
             />
+
             <View style={styles.pickerButtons}>
               <TouchableOpacity style={styles.pickerButton} onPress={handlePickerCancel}>
                 <Text style={[styles.pickerButtonLabel, { color: palette.textSecondary }]}>
                   {t('screens.financialHealth.cancel')}
                 </Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.pickerButton, styles.pickerButtonPrimary]}
                 onPress={handlePickerConfirm}
               >
-                <Text style={[styles.pickerButtonLabel, { color: palette.buttonText }]}>OK</Text>
+                <Text style={[styles.pickerButtonLabel, { color: palette.buttonText }]}>
+                  OK
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -387,4 +410,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

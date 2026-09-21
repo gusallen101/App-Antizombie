@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -79,7 +78,6 @@ export default function LoginScreen() {
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         const apiMessage = payload?.message ?? payload?.error;
-        // Traducir el mensaje de la API al idioma actual
         const message = translateError(apiMessage, t('auth.loginError'));
         throw new Error(message);
       }
@@ -98,7 +96,6 @@ export default function LoginScreen() {
         throw new Error(t('auth.loginError'));
       }
 
-      // TODO: replace with secure storage/session handling as needed.
       await Promise.all([
         AsyncStorage.setItem('@auth:isAuthenticated', 'true'),
         AsyncStorage.setItem('@auth:apikey', toStringOrEmpty(user.apikey)),
@@ -147,56 +144,41 @@ export default function LoginScreen() {
       ]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        
+        {/* Selector de idioma en la parte superior derecha */}
         <View style={styles.languageContainer}>
           <LanguageSwitcher />
         </View>
+
+        {/* Sección del Encabezado (Moderno y alineado a la izquierda) */}
         <View style={styles.heroContainer}>
-          <Text
-            style={[
-              styles.title,
-              {
-                color: palette.textPrimary,
-              },
-            ]}>
+          <Text style={[styles.title, { color: palette.textPrimary }]}>
             {t('login.welcome')}
           </Text>
-          <Image
-            source={require('@/assets/images/icon.png')}
-            style={styles.avatar}
-            resizeMode="contain"
-          />
+          <Text style={[styles.description, { color: palette.textSecondary }]}>
+            {t('login.description')}
+          </Text>
+          {t('login.subtitle') ? (
+            <Text style={[styles.subtitle, { color: palette.textSecondary }]}>
+              {t('login.subtitle')}
+            </Text>
+          ) : null}
         </View>
-        <Text
-          style={[
-            styles.description,
-            {
-              color: palette.textSecondary,
-            },
-          ]}>
-          {t('login.description')}
-        </Text>
-        <Text
-          style={[
-            styles.subtitle,
-            {
-              color: palette.textSecondary,
-            },
-          ]}>
-          {t('login.subtitle')}
-        </Text>
 
+        {/* Formulario */}
         <View style={styles.form}>
+          
           <View
             style={[
               styles.inputContainer,
               {
                 backgroundColor: palette.inputBackground,
-                borderColor: palette.inputBorder,
+                borderColor: palette.border + '50', // Borde muy sutil
               },
             ]}>
             <Ionicons
               name="mail-outline"
-              size={20}
+              size={22}
               color={palette.inputPlaceholder}
               style={styles.inputIcon}
             />
@@ -217,17 +199,18 @@ export default function LoginScreen() {
               textContentType="emailAddress"
             />
           </View>
+
           <View
             style={[
               styles.inputContainer,
               {
                 backgroundColor: palette.inputBackground,
-                borderColor: palette.inputBorder,
+                borderColor: palette.border + '50',
               },
             ]}>
             <Ionicons
               name="lock-closed-outline"
-              size={20}
+              size={22}
               color={palette.inputPlaceholder}
               style={styles.inputIcon}
             />
@@ -247,70 +230,68 @@ export default function LoginScreen() {
             />
           </View>
 
-          <TouchableOpacity
-            onPress={handleLogin}
-            disabled={loading}
-            style={[
-              styles.button,
-              {
-                backgroundColor: palette.primary,
-                opacity: loading ? 0.7 : 1,
-              },
-            ]}>
+          {/* Recuperar contraseña alineado a la derecha */}
+          <TouchableOpacity onPress={() => router.push('forgot-password' as any)} style={styles.forgotPasswordContainer}>
             <Text
               style={[
-                styles.buttonLabel,
+                styles.forgotPassword,
                 {
-                  color: palette.buttonText,
+                  color: palette.primary,
                 },
               ]}>
-              {loading ? t('auth.loggingIn') : t('common.login')}
+              {t('common.forgotPassword')}
             </Text>
-            {loading && <ActivityIndicator size="small" color={palette.buttonText} />}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={handleRegister}
-            style={[
-              styles.button,
-              {
-                backgroundColor: palette.secondary,
-              },
-            ]}>
-            <Text
+          {/* Botón Principal de Login con efecto GLOW */}
+          <View style={[styles.glowWrapper, { shadowColor: palette.primary }]}>
+            <TouchableOpacity
+              onPress={handleLogin}
+              disabled={loading}
               style={[
-                styles.buttonLabel,
+                styles.primaryButton,
                 {
-                  color: palette.buttonText,
+                  backgroundColor: palette.primary,
+                  opacity: loading ? 0.8 : 1,
                 },
               ]}>
+              {loading ? (
+                <ActivityIndicator size="small" color={palette.buttonText} />
+              ) : (
+                <Text
+                  style={[
+                    styles.buttonLabel,
+                    {
+                      color: palette.buttonText,
+                    },
+                  ]}>
+                  {t('common.login')}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Botón de Registro Secundario y Limpio */}
+          <TouchableOpacity
+            onPress={handleRegister}
+            style={styles.secondaryButton}>
+            <Text style={[styles.secondaryButtonText, { color: palette.textSecondary }]}>
               {t('common.register')}
             </Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity onPress={() => router.push('forgot-password' as any)}>
-          <Text
-            style={[
-              styles.forgotPassword,
-              {
-                color: palette.textSecondary,
-              },
-            ]}>
-            {t('common.forgotPassword')}
-          </Text>
-        </TouchableOpacity>
-
+        {/* Banner de Errores */}
         {error && (
           <View
             style={[
               styles.errorBanner,
               {
-                backgroundColor: `${palette.accent}22`,
+                backgroundColor: `${palette.accent}15`,
                 borderColor: palette.accent,
               },
             ]}>
-            <Ionicons name="alert-circle" size={18} color={palette.accent} />
+            <Ionicons name="alert-circle" size={20} color={palette.accent} />
             <Text
               style={[
                 styles.errorText,
@@ -332,84 +313,115 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-    gap: 16,
+    paddingVertical: 40,
+    paddingHorizontal: 28,
+    gap: 32,
     flexGrow: 1,
+    justifyContent: 'center', // Centra el contenido verticalmente si hay espacio
   },
   languageContainer: {
     alignItems: 'flex-end',
+    marginBottom: -10, // Acerca un poco el selector al título
   },
+  
+  // Hero / Encabezado
   heroContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
+    alignItems: 'flex-start', // Alineación moderna a la izquierda
+    gap: 8,
+    marginBottom: 10,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-  },
-  avatar: {
-    width: 140,
-    height: 140,
+    fontSize: 36,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   description: {
     fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 24,
+    opacity: 0.8,
   },
   subtitle: {
     fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 24,
+    opacity: 0.8,
   },
+
+  // Formulario
   form: {
-    gap: 12,
+    gap: 16,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    borderWidth: 1.5,
+    borderRadius: 16, // Bordes más redondeados
+    paddingHorizontal: 16,
+    height: 58, // Más altos para una sensación premium
   },
   inputIcon: {
-    marginRight: 8,
+    marginRight: 12,
   },
   input: {
     flex: 1,
-    height: 44,
+    height: '100%',
     fontSize: 16,
+    fontWeight: '500',
   },
-  button: {
-    borderRadius: 999,
-    paddingVertical: 14,
+
+  // Olvidé mi contraseña
+  forgotPasswordContainer: {
+    alignSelf: 'flex-end',
+    marginTop: -4,
+    marginBottom: 8,
+  },
+  forgotPassword: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // Botones
+  glowWrapper: {
+    // Efecto de resplandor (Neon Glow)
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 12, // Glow para Android
+    borderRadius: 16,
+  },
+  primaryButton: {
+    borderRadius: 16,
+    height: 56,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
   },
   buttonLabel: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
-  forgotPassword: {
-    textAlign: 'center',
-    fontSize: 14,
-    textDecorationLine: 'underline',
-  },
-  errorBanner: {
+  secondaryButton: {
+    borderRadius: 16,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+  },
+  secondaryButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  // Errores y Loading
+  errorBanner: {
+    marginTop: 16,
+    borderWidth: 1.5,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   errorText: {
     flex: 1,
@@ -423,4 +435,3 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 });
-

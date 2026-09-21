@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +17,7 @@ export function AppHeader({ title }: Props) {
   const { palette } = useAppTheme();
   const { t } = useLocalization();
   const { toggle } = useNavigationMenu();
+  const router = useRouter();
 
   return (
     <SafeAreaView
@@ -42,7 +44,14 @@ export function AppHeader({ title }: Props) {
           ]}>
           {title}
         </Text>
-        <LanguageSwitcher />
+        <View style={styles.rightActions}>
+          <Pressable
+            onPress={() => router.push('/notifications')}
+            style={styles.headerButton}>
+            <Ionicons name="notifications-outline" size={24} color={palette.headerText} />
+          </Pressable>
+          <LanguageSwitcher />
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -66,10 +75,16 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: 22,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1.4,
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerButton: {
+    padding: 8,
   },
 });
-

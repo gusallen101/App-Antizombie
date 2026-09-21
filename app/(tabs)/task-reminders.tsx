@@ -2,7 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import { AppScreen } from '@/components/layout/app-screen';
 import { API_CONFIG } from '@/constants/config';
@@ -61,6 +69,26 @@ export default function TaskRemindersScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // --- LÓGICA DE TUTORIAL ---
+  const [showTutorial, setShowTutorial] = useState(false);
+  const checkTutorial = useCallback(async () => {
+    const isActive = await AsyncStorage.getItem('@tutorial:active');
+    const seenStepsRaw = (await AsyncStorage.getItem('@tutorial:seen_steps')) || '[]';
+    const seenSteps: string[] = JSON.parse(seenStepsRaw);
+    if (isActive === 'true' && !seenSteps.includes('taskReminders')) {
+      setShowTutorial(true);
+    }
+  }, []);
+  const dismissTutorial = async () => {
+    setShowTutorial(false);
+    const seenStepsRaw = (await AsyncStorage.getItem('@tutorial:seen_steps')) || '[]';
+    const seenSteps: string[] = JSON.parse(seenStepsRaw);
+    if (!seenSteps.includes('taskReminders')) {
+      seenSteps.push('taskReminders');
+      await AsyncStorage.setItem('@tutorial:seen_steps', JSON.stringify(seenSteps));
+    }
+  };
 
   const resolveCategoryMeta = useCallback(
     (key: string) => {
@@ -164,7 +192,8 @@ export default function TaskRemindersScreen() {
   useFocusEffect(
     useCallback(() => {
       void fetchReminders('initial');
-    }, [fetchReminders]),
+      void checkTutorial();
+    }, [fetchReminders, checkTutorial]),
   );
 
   const handleRefresh = useCallback(() => {
@@ -174,55 +203,30 @@ export default function TaskRemindersScreen() {
   const hasTasks = useMemo(() => categories.some((category) => category.tasks.length > 0), [categories]);
 
   const renderContent = () => {
-    if (loading) {
-      return (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={palette.primary} />
-          <Text style={[styles.statusLabel, { color: palette.inputPlaceholder }]}>
-            {t('screens.taskReminders.header')}
-          </Text>
-        </View>
-      );
-    }
-
-    if (error) {
-      return (
-        <View style={styles.center}>
-          <Ionicons name="warning-outline" size={32} color={palette.accent} />
-          <Text style={[styles.errorTitle, { color: palette.accent }]}>
-            {t('screens.taskReminders.errorTitle')}
-          </Text>
-          <Text style={[styles.errorMessage, { color: palette.inputPlaceholder }]}>{error}</Text>
-          <TouchableOpacity
-            style={[
-              styles.retryButton,
-              {
-                backgroundColor: palette.primary,
-              },
-            ]}
-            onPress={handleRefresh}>
-            <Ionicons name="refresh" size={18} color={palette.buttonText} />
-            <Text style={[styles.retryLabel, { color: palette.buttonText }]}>
-              {t('screens.taskReminders.retry')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (!hasTasks) {
-      return (
-        <View style={styles.center}>
-          <Ionicons name="checkmark-done-circle-outline" size={48} color={palette.accent} />
-          <Text style={[styles.emptyTitle, { color: palette.textPrimary }]}>
-            {t('screens.taskReminders.emptyTitle')}
-          </Text>
-          <Text style={[styles.emptyMessage, { color: palette.inputPlaceholder }]}>
-            {t('screens.taskReminders.emptyMessage')}
-          </Text>
-        </View>
-      );
-    }
+    if (loading) return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={palette.primary} />
+        <Text style={[styles.statusLabel, { color: palette.inputPlaceholder }]}>{t('screens.taskReminders.header')}</Text>
+      </View>
+    );
+    if (error) return (
+      <View style={styles.center}>
+        <Ionicons {...({} as any)} name="warning-outline" size={32} color={palette.accent} />
+        <Text style={[styles.errorTitle, { color: palette.accent }]}>{t('screens.taskReminders.errorTitle')}</Text>
+        <Text style={[styles.errorMessage, { color: palette.inputPlaceholder }]}>{error}</Text>
+        <TouchableOpacity style={[styles.retryButton, { backgroundColor: palette.primary }]} onPress={handleRefresh}>
+          <Ionicons {...({} as any)} name="refresh" size={18} color={palette.buttonText} />
+          <Text style={[styles.retryLabel, { color: palette.buttonText }]}>{t('screens.taskReminders.retry')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+    if (!hasTasks) return (
+      <View style={styles.center}>
+        <Ionicons {...({} as any)} name="checkmark-done-circle-outline" size={48} color={palette.accent} />
+        <Text style={[styles.emptyTitle, { color: palette.textPrimary }]}>{t('screens.taskReminders.emptyTitle')}</Text>
+        <Text style={[styles.emptyMessage, { color: palette.inputPlaceholder }]}>{t('screens.taskReminders.emptyMessage')}</Text>
+      </View>
+    );
 
     return (
       <View style={styles.listWrapper}>
@@ -235,7 +239,7 @@ export default function TaskRemindersScreen() {
                   backgroundColor: palette.secondary,
                 },
               ]}>
-              <Ionicons name={category.icon} size={18} color={palette.buttonText} />
+              <Ionicons {...({} as any)} name={category.icon} size={18} color={palette.buttonText} />
               <Text style={[styles.categoryTitle, { color: palette.buttonText }]}>{category.title}</Text>
             </View>
             {category.tasks.length === 0 ? (
@@ -275,18 +279,23 @@ export default function TaskRemindersScreen() {
   };
 
   return (
-    <AppScreen
-      titleKey="tabs.taskReminders"
-      contentContainerStyle={styles.screenContent}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={palette.primary}
-          colors={[palette.primary]}
-        />
-      }>
+    <AppScreen titleKey="tabs.taskReminders" contentContainerStyle={styles.screenContent} refreshControl={
+      <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={palette.primary} colors={[palette.primary]} />
+    }>
       {renderContent()}
+      {/* Modal para el tutorial interactivo */}
+      <Modal visible={showTutorial} transparent animationType="fade" onRequestClose={dismissTutorial}>
+        <View style={styles.tutorialModalOverlay}>
+          <View style={[styles.tutorialModalCard, { backgroundColor: palette.surface }]}>
+            <Ionicons {...({} as any)} name="alarm-outline" size={48} color={palette.primary} style={{ alignSelf: 'center' }} />
+            <Text style={[styles.tutorialModalTitle, { color: palette.textOnSurface }]}>{t('tabs.taskReminders')}</Text>
+            <Text style={[styles.tutorialModalDescription, { color: palette.inputPlaceholder }]}>{t('screens.onboarding.step5Desc')}</Text>
+            <TouchableOpacity style={[styles.tutorialPrimaryButton, { backgroundColor: palette.primary }]} onPress={dismissTutorial}>
+              <Text style={[styles.tutorialPrimaryButtonLabel, { color: palette.buttonText }]}>{t('common.ok')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </AppScreen>
   );
 }
@@ -400,5 +409,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  tutorialModalOverlay: {
+    flex: 1,
+    backgroundColor: '#00000080',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  tutorialModalCard: {
+    borderRadius: 28,
+    padding: 20,
+    gap: 16,
+    alignItems: 'center',
+  },
+  tutorialModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  tutorialModalDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  tutorialPrimaryButton: {
+    borderRadius: 999,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    minWidth: 120,
+  },
+  tutorialPrimaryButtonLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
 });
-

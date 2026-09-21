@@ -1,3 +1,4 @@
+// ---------- Imports de librerías y utilidades principales ----------
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
@@ -5,6 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Image,
   InteractionManager,
   Modal,
   ScrollView,
@@ -14,15 +16,22 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-
+import { Keyboard } from 'react-native';
 import { AppScreen } from '@/components/layout/app-screen';
 import { API_CONFIG } from '@/constants/config';
 import { useAppTheme } from '@/providers/app-theme-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
+// ---------- Definición de Tipos para Categoría y Tareas ----------
 type Category = {
   id: string;
   categoria: string;
+};
+
+type SharedUser = {
+  id: string | number;
+  nombre: string;
+  avatar?: string;
 };
 
 type TodoItem = {
@@ -30,6 +39,7 @@ type TodoItem = {
   texto: string;
   status: number;
   completed_by?: string;
+  shared_with?: SharedUser[];
   nombre?: string;
   created_at?: string;
   updated_at?: string;
@@ -41,22 +51,27 @@ type TodoList = {
   category_id: string | number;
   categoria: string;
   todos: TodoItem[];
+  shared_with?: SharedUser[];
   categoria_updated?: string;
 };
 
+// ---------- Constantes de endpoints y claves de almacenamiento ----------
 const CATEGORY_EDIT_ENDPOINT = 'update/cattodo';
 const EDIT_TODO_ENDPOINT = 'edit-todo';
 const PERSONAL_CATEGORY_ENDPOINT = 'cattodos-personal';
 const SHARE_ASSIGN_ENDPOINT = 'sharedtodoslist';
 const SHARE_INVITE_ENDPOINT = 'invite';
 const SHARE_LOOKUP_ENDPOINT = 'email';
+
 const PERSONAL_CLOSED_KEY = '@pending:personalClosed';
 const SHARED_CLOSED_KEY = '@pending:sharedClosed';
 const NOW_IS_KEY = '@pending:nowIs';
 const CURRENT_TAB_KEY = '@pending:currentTab';
 const PERSONAL_PREFIX = 'personal_todo_list';
 const SHARED_PREFIX = 'shared-todo-list';
+const CATEGORY_NAME_MAX_LENGTH = 20;
 
+// ---------- Funciones Auxiliares para manejo y parsing de datos en almacenamiento ----------
 const parseCollapsedMap = (raw: string | null, prefix: string) => {
   if (!raw) {
     return {};
@@ -92,10 +107,13 @@ const parseDateArray = (raw: string | null) => {
   }
 };
 
+// ---------- Componente principal de la pantalla de pendientes ----------
 export default function PendingScreen() {
-  const { palette } = useAppTheme();
+  // -------- Hooks de tema y localización --------
+  const { palette, colorScheme } = useAppTheme();
   const { t } = useLocalization();
 
+  // -------- Definición de todos los estados del componente --------
   const [categories, setCategories] = useState<Category[]>([]);
   const [personalCategories, setPersonalCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -106,6 +124,7 @@ export default function PendingScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Estados para gestión de modales y entradas del usuario
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [categoryName, setCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -118,21 +137,84 @@ export default function PendingScreen() {
   const [shareTargetList, setShareTargetList] = useState<TodoList | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
+
+  // Estado para detección de listas nuevas compartidas y colapsado de listas
   const [recentTimes, setRecentTimes] = useState<Date[]>([]);
   const [collapsedPersonal, setCollapsedPersonal] = useState<Record<string | number, boolean>>({});
   const [collapsedShared, setCollapsedShared] = useState<Record<string | number, boolean>>({});
+  const [shareSearch, setShareSearch] = useState('');
+  const [shareResults, setShareResults] = useState<any[]>([]);
+
+  // Estados para modal de completar tareas
   const [completeTaskModalVisible, setCompleteTaskModalVisible] = useState(false);
   const [taskToComplete, setTaskToComplete] = useState<{ id: string | number; categoryId: string | number } | null>(null);
   const [completingTask, setCompletingTask] = useState(false);
+
+  // Estados para ver miembros de lista compartida
+  const [membersModalVisible, setMembersModalVisible] = useState(false);
+  const [selectedListMembers, setSelectedListMembers] = useState<{name: string, members: SharedUser[]} | null>(null);
+
+  // --- LÓGICA DE TUTORIAL ---
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const checkTutorial = useCallback(async () => {
+    const isActive = await AsyncStorage.getItem('@tutorial:active');
+    const seenStepsRaw = (await AsyncStorage.getItem('@tutorial:seen_steps')) || '[]';
+    const seenSteps: string[] = JSON.parse(seenStepsRaw);
+
+    if (isActive === 'true' && !seenSteps.includes('pending')) {
+      setShowTutorial(true);
+    }
+  }, []);
+
+  const dismissTutorial = async () => {
+    setShowTutorial(false);
+    const seenStepsRaw = (await AsyncStorage.getItem('@tutorial:seen_steps')) || '[]';
+    const seenSteps: string[] = JSON.parse(seenStepsRaw);
+
+    if (!seenSteps.includes('pending')) {
+      seenSteps.push('pending');
+      await AsyncStorage.setItem('@tutorial:seen_steps', JSON.stringify(seenSteps));
+    }
+  };
+
+  const handleNextTutorial = () => {
+    if (tutorialStep < tutorialSteps.length - 1) {
+      const nextStep = tutorialStep + 1;
+      setTutorialStep(nextStep);
+      // Scroll automático para asegurar que el elemento resaltado sea visible
+      if (nextStep === 1) { // Manage Categories button
+        scrollViewRef.current?.scrollTo({ y: 100, animated: true });
+      } else if (nextStep === 2) { // Tabs
+        scrollViewRef.current?.scrollTo({ y: 300, animated: true });
+      } else if (nextStep === 3) { // Complete Hint
+        scrollViewRef.current?.scrollTo({ y: 400, animated: true });
+      }
+    } else {
+      void dismissTutorial();
+    }
+  };
+
+  const tutorialSteps = [
+    { title: t('screens.pending.tutorialAddTitle'), desc: t('screens.pending.tutorialAddDesc'), icon: 'add-circle' },
+    { title: t('screens.pending.tutorialManageTitle'), desc: t('screens.pending.tutorialManageDesc'), icon: 'create' },
+    { title: t('screens.pending.tutorialTabsTitle'), desc: t('screens.pending.tutorialTabsDesc'), icon: 'swap-horizontal' },
+    { title: t('screens.pending.tutorialCompleteHintTitle'), desc: t('screens.pending.tutorialCompleteHintDesc'), icon: 'checkmark-done-circle' },
+  ];
+
+  // refs para manejo programático de scroll
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollPositionRef = useRef<number>(0);
 
+  // -------- Funciones de ayuda para orden y normalización de datos --------
+  // Ordena por categoría alfabéticamente
   const sortByName = useCallback(
     <T extends { categoria?: string }>(items: T[]): T[] =>
       [...items].sort((a, b) => (a.categoria ?? '').localeCompare(b.categoria ?? '', undefined, { sensitivity: 'base' })),
     [],
   );
 
+  // Convierte a array en caso de recibir objeto en el payload (ajusta respuesta API)
   const normalizeArray = useCallback(<T,>(payload: unknown): T[] => {
     if (!payload) {
       return [];
@@ -143,6 +225,7 @@ export default function PendingScreen() {
     return Object.values(payload as Record<string, T>);
   }, []);
 
+  // Guarda estado de colapsado en AsyncStorage
   const persistCollapsedState = useCallback(
     async (storageKey: string, map: Record<string | number, boolean>, prefix: string) => {
       try {
@@ -154,6 +237,7 @@ export default function PendingScreen() {
     [],
   );
 
+  // Guarda/actualiza los timestamps recientes para marcar cambios en listas compartidas
   const updateRecentTimestamps = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem(NOW_IS_KEY);
@@ -170,6 +254,7 @@ export default function PendingScreen() {
     }
   }, []);
 
+  // Hidrata el estado de la UI desde el almacenamiento (pestaña activa, listas colapsadas, historial)
   const hydrateUiState = useCallback(async () => {
     try {
       const [storedTab, storedPersonal, storedShared, storedRecent] = await Promise.all([
@@ -189,12 +274,14 @@ export default function PendingScreen() {
     }
   }, []);
 
+  // Ejecuta hidratación de estado (primer render o cuando vuelve la pantalla)
   useFocusEffect(
     useCallback(() => {
       void hydrateUiState();
     }, [hydrateUiState]),
   );
 
+  // -------- Función para obtener todas las listas y categorías del backend --------
   const fetchAll = useCallback(async (preserveScrollPosition = false) => {
     try {
       setError(null);
@@ -211,6 +298,7 @@ export default function PendingScreen() {
         throw new Error(t('auth.loginErrorFallback'));
       }
 
+      // Pide categorías, categorías personales, listas personales y compartidas
       const [catRes, personalCatRes, personalRes, sharedRes] = await Promise.all([
         fetch(`${API_CONFIG.baseUrl}cattodos/${userId}`, { headers: { apikey } }),
         fetch(`${API_CONFIG.baseUrl}${PERSONAL_CATEGORY_ENDPOINT}/${userId}`, { headers: { apikey } }),
@@ -222,6 +310,7 @@ export default function PendingScreen() {
         throw new Error(t('screens.home.zombieError'));
       }
 
+      // Parsea y ordena todas las entidades
       const cats = sortByName(normalizeArray<Category>(await catRes.json()));
       const personalCats = sortByName(normalizeArray<Category>(await personalCatRes.json()));
       const personal = sortByName(normalizeArray<TodoList>(await personalRes.json()));
@@ -245,6 +334,7 @@ export default function PendingScreen() {
     }
   }, [normalizeArray, selectedCategory, sortByName, t, updateRecentTimestamps]);
 
+  // -------- Efecto para actualizar el category seleccionado si cambia la lista de categorías global --------
   useEffect(() => {
     if (categories.length === 0) {
       setSelectedCategory(null);
@@ -255,12 +345,17 @@ export default function PendingScreen() {
     }
   }, [categories, selectedCategory]);
 
+  // -------- Efecto para cargar datos cuando la pantalla toma foco --------
   useFocusEffect(
     useCallback(() => {
-      void fetchAll();
+      void fetchAll(); // Cargar datos
+      void checkTutorial(); // Verificar tutorial al enfocar
     }, [fetchAll]),
   );
 
+  // ----------- Handlers para UI y acciones de usuario ------------
+
+  // Alterna colapsado de lista personal y guarda estado
   const togglePersonalList = useCallback(
     (id: string | number) => {
       setCollapsedPersonal((prev) => {
@@ -272,6 +367,7 @@ export default function PendingScreen() {
     [persistCollapsedState],
   );
 
+  // Alterna colapsado de lista compartida y guarda estado
   const toggleSharedList = useCallback(
     (id: string | number) => {
       setCollapsedShared((prev) => {
@@ -283,29 +379,37 @@ export default function PendingScreen() {
     [persistCollapsedState],
   );
 
+  // Cambia la pestaña actual (personal o compartida) y la persiste
   const handleSwitchTab = useCallback((tab: 'personal' | 'shared') => {
     setCurrentTab(tab);
     void AsyncStorage.setItem(CURRENT_TAB_KEY, tab).catch(() => {});
   }, []);
 
+  // Crea una nueva tarea para la categoría seleccionada
   const handleAddTask = useCallback(async () => {
+    //  Cierra teclado antes de cualquier lógica
+    Keyboard.dismiss();
+  
     if (!taskText.trim() || !selectedCategory) {
       Alert.alert(t('screens.pending.header'), t('screens.pending.errorMissingFields'));
       return;
     }
+  
     try {
       const [apikey, userId] = await Promise.all([
         AsyncStorage.getItem('@auth:apikey'),
         AsyncStorage.getItem('@auth:userId'),
       ]);
+  
       if (!apikey || !userId) {
         throw new Error(t('auth.loginErrorFallback'));
       }
+  
       const params = new URLSearchParams();
       params.append('id_usuario', userId);
       params.append('texto', taskText.trim());
       params.append('categoria', selectedCategory);
-
+  
       const response = await fetch(`${API_CONFIG.baseUrl}todo`, {
         method: 'POST',
         headers: {
@@ -314,11 +418,14 @@ export default function PendingScreen() {
         },
         body: params.toString(),
       });
+  
       if (!response.ok) {
         throw new Error(t('screens.pending.errorSaveTask'));
       }
+  
       setTaskText('');
-      void fetchAll();
+      void fetchAll(true);
+  
     } catch (caughtError) {
       Alert.alert(
         t('screens.pending.errorSaveTask'),
@@ -327,21 +434,36 @@ export default function PendingScreen() {
     }
   }, [fetchAll, selectedCategory, t, taskText]);
 
+  // Abre modal para confirmar completar una tarea
   const handleCompleteTodo = useCallback(
     (todoId: string | number, categoryId: string | number) => {
       // Guardar posición del scroll antes de mostrar el modal
-      scrollViewRef.current?.scrollTo({ y: scrollPositionRef.current, animated: false });
+      // Eliminado el scrollTo para que NO salte al header al completar
       setTaskToComplete({ id: todoId, categoryId });
       setCompleteTaskModalVisible(true);
     },
     [],
   );
 
+  // Cancela el proceso de completar tarea (modal)
   const handleCancelCompleteTask = useCallback(() => {
     setCompleteTaskModalVisible(false);
     setTaskToComplete(null);
   }, []);
 
+  // Abre el modal para ver miembros
+  const handleViewMembers = useCallback((list: TodoList) => {
+    const rawMembers = list.shared_with || [];
+    // Filtramos duplicados por ID para evitar el error de "duplicate keys" de React
+    // y asegurar que cada persona aparezca solo una vez en la lista.
+    const uniqueMembers = rawMembers.filter(
+      (member, index, self) => index === self.findIndex((m) => m.id === member.id)
+    );
+    setSelectedListMembers({ name: list.categoria, members: uniqueMembers });
+    setMembersModalVisible(true);
+  }, []);
+
+  // Confirma la acción de completar una tarea (marca como completada en backend y frontend)
   const handleConfirmCompleteTask = useCallback(async () => {
     if (!taskToComplete) {
       return;
@@ -380,7 +502,6 @@ export default function PendingScreen() {
       }
 
       // Actualizar estado local primero para feedback inmediato sin recargar todo
-      // Esto evita el re-render completo que causa el reset del scroll
       setPersonalLists((prevLists) =>
         prevLists.map((list) => {
           if (String(list.category_id) === String(taskToComplete.categoryId)) {
@@ -413,14 +534,12 @@ export default function PendingScreen() {
         })
       );
 
-      // Cerrar modal
+      // Cerrar modal y limpiar estado temporal
       setCompleteTaskModalVisible(false);
       setTaskToComplete(null);
 
-      // Sincronizar con servidor en segundo plano (sin afectar el scroll)
-      // Esto asegura que los datos estén actualizados pero no causa re-render completo
+      // Sincronizar en segundo plano luego de completar tarea
       fetchAll(true).catch(() => {
-        // Si falla, recargar todo como fallback
         void fetchAll();
       });
     } catch (caughtError) {
@@ -433,9 +552,18 @@ export default function PendingScreen() {
     }
   }, [fetchAll, taskToComplete, t]);
 
+  // Añade una categoría nueva para el usuario
   const handleAddCategory = useCallback(async () => {
     if (!categoryName.trim()) {
       Alert.alert(t('screens.pending.header'), t('screens.pending.categoryNamePlaceholder'));
+      return;
+    }
+
+    if (categoryName.trim().length > CATEGORY_NAME_MAX_LENGTH) {
+      Alert.alert(
+        t('screens.pending.alertCaracter'),
+        t('screens.pending.contentCaracterAlert', { max: CATEGORY_NAME_MAX_LENGTH })
+      );
       return;
     }
     try {
@@ -473,6 +601,7 @@ export default function PendingScreen() {
     }
   }, [categoryName, fetchAll, t]);
 
+  // Elimina una categoría (luego de confirmar con el usuario)
   const handleDeleteCategory = useCallback(
     (category: Category) => {
       Alert.alert(
@@ -505,6 +634,8 @@ export default function PendingScreen() {
                   t('screens.pending.successCategoryDeleted'),
                   payload?.message ?? '',
                 );
+                // IMPORTANTE: después de borrar una categoría, restaurar scroll a tope
+                scrollViewRef.current?.scrollTo({ y: 0, animated: true });
                 void fetchAll();
               } catch (caughtError) {
                 Alert.alert(
@@ -520,6 +651,7 @@ export default function PendingScreen() {
     [fetchAll, t],
   );
 
+  // Marca categoría para edición (abre modal)
   const handleEditCategory = useCallback(
     async (category: Category) => {
       setEditingCategory(category);
@@ -529,6 +661,7 @@ export default function PendingScreen() {
     [],
   );
 
+  // Guarda cambios de edición/nueva categoría (llamada desde modal)
   const handleSaveCategoryChanges = useCallback(async () => {
     if (!editingCategory) {
       await handleAddCategory();
@@ -536,6 +669,13 @@ export default function PendingScreen() {
     }
     if (!categoryName.trim()) {
       Alert.alert(t('screens.pending.header'), t('screens.pending.categoryNamePlaceholder'));
+      return;
+    }
+    if (categoryName.trim().length > CATEGORY_NAME_MAX_LENGTH) {
+      Alert.alert(
+        t('screens.pending.alertCaracter'),
+        t('screens.pending.contentCaracterAlert', { max: CATEGORY_NAME_MAX_LENGTH })
+      );
       return;
     }
     try {
@@ -570,6 +710,7 @@ export default function PendingScreen() {
     }
   }, [categoryName, editingCategory, fetchAll, t]);
 
+  // Acciones para compartir una lista (abre modal)
   const handleOpenShareModal = useCallback((list: TodoList) => {
     setShareTargetList(list);
     setShareEmail('');
@@ -578,94 +719,112 @@ export default function PendingScreen() {
     setShareModalVisible(true);
   }, []);
 
+  // Busca usuario a compartir por email
   const handleLookupShare = useCallback(async () => {
-    if (!shareEmail.trim()) {
-      return;
-    }
+    if (!shareSearch.trim()) return;
+
     try {
+
       setShareLoading(true);
+
       const apikey = await AsyncStorage.getItem('@auth:apikey');
-      if (!apikey) {
-        throw new Error(t('auth.loginErrorFallback'));
+
+      const response = await fetch(
+        `${API_CONFIG.baseUrl}usuarios/buscar/${encodeURIComponent(shareSearch.trim())}`,
+        {
+          headers: {
+            apikey: apikey ?? '',
+          },
+        }
+      );
+
+      const text = await response.text();
+
+      let payload;
+
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        throw new Error (t('screens.pending.errorSearch'));
       }
-      const response = await fetch(`${API_CONFIG.baseUrl}${SHARE_LOOKUP_ENDPOINT}/${shareEmail.trim()}`, {
-        headers: { apikey },
-      });
-      const payload = await response.json();
-      if (!response.ok || !Array.isArray(payload) || payload.length === 0) {
-        setShareLookup(null);
-        setShareMessage(t('screens.pending.shareNotFound'));
-        return;
+
+      if (!response.ok) {
+        throw new Error(payload?.message || t('screens.pending.errorSearch'));
       }
-      setShareLookup({
-        name: payload[0].nombre,
-        invitedId: String(payload[0].id_invited),
-      });
+
+      setShareResults(payload);
       setShareMessage(null);
-    } catch (error) {
-      setShareLookup(null);
-      setShareMessage((error as Error).message ?? t('screens.pending.shareNotFound'));
-    } finally {
-      setShareLoading(false);
-    }
-  }, [shareEmail, t]);
 
-  const handleSendShareInvite = useCallback(async () => {
-    if (!shareLookup || !shareTargetList) {
-      return;
+    } catch (error) {
+
+      setShareResults([]);
+      setShareMessage((error as Error).message);
+
+    } finally {
+
+      setShareLoading(false);
+
     }
+
+  }, [shareSearch]);
+
+  // Envía invitación para compartir una lista
+  const handleSendShareInvite = useCallback(async (userId: string) => {
+
+    if (!shareTargetList) return;
+
     try {
+
       setShareLoading(true);
-      const [apikey, userId, senderName] = await Promise.all([
-        AsyncStorage.getItem('@auth:apikey'),
-        AsyncStorage.getItem('@auth:userId'),
-        AsyncStorage.getItem('@auth:name'),
-      ]);
-      if (!apikey || !userId) {
-        throw new Error(t('auth.loginErrorFallback'));
-      }
-      const assignParams = new URLSearchParams();
-      assignParams.append('id_usuario', userId);
-      assignParams.append('id_categoria', String(shareTargetList.category_id));
-      await fetch(`${API_CONFIG.baseUrl}${SHARE_ASSIGN_ENDPOINT}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          apikey,
-        },
-        body: assignParams.toString(),
-      });
 
-      const inviteParams = new URLSearchParams();
-      inviteParams.append('l', String(shareTargetList.category_id));
-      inviteParams.append('u', shareEmail.trim());
-      inviteParams.append('n', senderName ?? '');
-      inviteParams.append('sid', userId);
-      inviteParams.append('s', shareLookup.name);
-      inviteParams.append('iid', shareLookup.invitedId);
+      const apikey = await AsyncStorage.getItem('@auth:apikey');
 
-      await fetch(`${API_CONFIG.baseUrl}${SHARE_INVITE_ENDPOINT}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          apikey,
-        },
-        body: inviteParams.toString(),
-      });
+      const params = new URLSearchParams();
+      params.append('id_usuario', userId);
+      params.append('id_categoria', String(shareTargetList.category_id));
+      
 
-      void fetchAll();
-      Alert.alert(t('screens.pending.shareSuccessTitle'), t('screens.pending.shareSuccessMessage'));
-      setShareModalVisible(false);
-      setShareEmail('');
-      setShareLookup(null);
-      setShareTargetList(null);
-    } catch (error) {
-      Alert.alert(t('screens.pending.shareTitle'), (error as Error).message ?? t('screens.pending.shareNotFound'));
-    } finally {
-      setShareLoading(false);
+    const response = await fetch(`${API_CONFIG.baseUrl}listas/compartir`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'apikey': apikey ?? ''
+      },
+      body: params.toString()
+    });
+
+    if (!response.ok) {
+      throw new Error(t('screens.pending.errorShareInvite'));
     }
-  }, [shareEmail, shareLookup, shareTargetList, t]);
 
+    void fetchAll();
+
+    Alert.alert(
+      t('screens.pending.shareSuccessTitle'),
+      t('screens.pending.shareSuccessMessage')
+    );
+
+    setShareModalVisible(false);
+    setShareSearch('');
+    setShareResults([]);
+
+
+  } catch (error) {
+
+    Alert.alert(
+      t('screens.pending.shareTitle'),
+      (error as Error).message
+    );
+
+  } finally {
+
+    setShareLoading(false);
+
+  }
+
+}, [shareTargetList]);
+
+  // Limpia todas las tareas completadas de una lista (tras confirmar)
   const handleClearCompleted = useCallback(
     (categoryId: string | number) => {
       Alert.alert(
@@ -682,17 +841,35 @@ export default function PendingScreen() {
                 if (!apikey) {
                   throw new Error(t('auth.loginErrorFallback'));
                 }
-                const response = await fetch(`${API_CONFIG.baseUrl}clearcompleted/${categoryId}`, {
-                  headers: { apikey },
-                });
+  
+                //  Guarda posición actual del scroll
+                const currentScrollY = scrollPositionRef.current;
+  
+                const response = await fetch(
+                  `${API_CONFIG.baseUrl}clearcompleted/${categoryId}`,
+                  { headers: { apikey } }
+                );
+  
                 if (!response.ok) {
                   throw new Error(t('screens.pending.errorDeleteTask'));
                 }
-                void fetchAll();
+  
+                //  Recarga sin loading global
+                await fetchAll(true);
+  
+                // Restaura scroll después del render
+                InteractionManager.runAfterInteractions(() => {
+                  scrollViewRef.current?.scrollTo({
+                    y: currentScrollY,
+                    animated: false,
+                  });
+                });
+  
               } catch (caughtError) {
                 Alert.alert(
                   t('screens.pending.errorDeleteTask'),
-                  (caughtError as Error).message ?? t('screens.pending.errorDeleteTask'),
+                  (caughtError as Error).message ??
+                    t('screens.pending.errorDeleteTask'),
                 );
               }
             },
@@ -703,12 +880,14 @@ export default function PendingScreen() {
     [fetchAll, t],
   );
 
+  // Marca tarea para edición (abre modal)
   const handleEditTodo = useCallback((todo: TodoItem, categoryId: string | number) => {
     setEditingTodo({ id: todo.id, categoryId });
     setEditingTodoText(todo.texto);
     setEditTodoModalVisible(true);
   }, []);
 
+  // Guarda los cambios en texto de una tarea editada
   const handleSaveTodoEdit = useCallback(async () => {
     if (!editingTodo || !editingTodoText.trim()) {
       Alert.alert(t('screens.pending.editTask'), t('screens.pending.errorMissingFields'));
@@ -736,7 +915,7 @@ export default function PendingScreen() {
         throw new Error(t('screens.pending.errorSaveTask'));
       }
 
-      // Actualizar estado local primero para evitar re-render completo que causa reset del scroll
+      // Actualiza localmente el texto editado en tareas personales/compartidas
       setPersonalLists((prevLists) =>
         prevLists.map((list) => {
           if (String(list.category_id) === String(editingTodo.categoryId)) {
@@ -773,9 +952,9 @@ export default function PendingScreen() {
       setEditingTodo(null);
       setEditingTodoText('');
 
-      // Sincronizar con servidor en segundo plano (sin afectar el scroll)
+      // Actualiza datos en segundo plano por si hay cambios externos
       fetchAll(true).catch(() => {
-        // Si falla, recargar todo como fallback
+        // Como fallback, recarga todo
         void fetchAll();
       });
     } catch (caughtError) {
@@ -786,6 +965,7 @@ export default function PendingScreen() {
     }
   }, [editingTodo, editingTodoText, fetchAll, t]);
 
+  // ----- Variables auxiliares para renderizado dinámico -----
   const currentLists = currentTab === 'personal' ? personalLists : sharedLists;
   const collapsedMap = currentTab === 'personal' ? collapsedPersonal : collapsedShared;
   const toggleList = currentTab === 'personal' ? togglePersonalList : toggleSharedList;
@@ -793,8 +973,10 @@ export default function PendingScreen() {
   const empty = !loading && currentLists.every((list) => list.todos.length === 0);
   const hasCategories = categories.length > 0;
 
+  // ------------------- RENDER principal del componente -------------------
   return (
     <AppScreen titleKey="tabs.pending">
+      {/* Scroll principal de la pantalla, con manejo de scrollRef */}
       <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.content}
@@ -802,27 +984,36 @@ export default function PendingScreen() {
           scrollPositionRef.current = event.nativeEvent.contentOffset.y;
         }}
         scrollEventThrottle={16}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
         maintainVisibleContentPosition={{
           minIndexForVisible: 0,
-        }}>
-        <View style={[styles.card, { backgroundColor: palette.surface }]}>
-          <Text style={[styles.cardTitle, { color: palette.textOnSurface }]}>
+        }}
+      >
+        {/* Card para añadir nueva tarea/categoría */}
+        <View style={[
+          styles.card, 
+          { backgroundColor: palette.surface,
+            borderColor: (showTutorial && tutorialStep === 0) ? palette.primary : palette.border,
+            borderWidth: (showTutorial && tutorialStep === 0) ? 3 : 1,
+          }
+        ]}>
+          <Text style={[styles.cardTitle, { color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }]}>
             {t('screens.pending.addNew')}
           </Text>
 
-          <Text style={[styles.label, { color: palette.textOnSurface }]}>
+          {/* Selector de categoría */}
+          <Text style={[styles.label, { color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }]}>
             {t('screens.pending.selectCategory')}
           </Text>
-          <View style={[styles.pickerWrapper, { borderColor: palette.border }]}>
+          <View style={[styles.pickerWrapper, { borderColor: colorScheme === 'light' ? '#333333' : palette.border }]}>
             {hasCategories ? (
-              <Picker
+              <Picker {...({} as any)}
                 selectedValue={selectedCategory ?? undefined}
                 onValueChange={(value) => setSelectedCategory(String(value))}
-                style={{ color: palette.textOnSurface }}
-                itemStyle={{ color: palette.textOnSurface }}>
+                style={{ color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }}
+                itemStyle={{ color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }}>
                 {categories.map((cat) => (
-                  <Picker.Item key={String(cat.id)} label={cat.categoria} value={String(cat.id)} color={palette.textOnSurface} />
+                  <Picker.Item {...({} as any)} key={String(cat.id)} label={cat.categoria} value={String(cat.id)} color={colorScheme === 'light' ? '#000000' : palette.textOnSurface} />
                 ))}
               </Picker>
             ) : (
@@ -832,12 +1023,19 @@ export default function PendingScreen() {
             )}
           </View>
 
-          <TouchableOpacity
-            style={[styles.secondaryButton, { borderColor: palette.primary }]}
+          {/* Botón para gestionar categorías (abre modal) */}
+          <TouchableOpacity 
+            style={[
+              styles.secondaryButton, 
+              { 
+                borderColor: (showTutorial && tutorialStep === 1) ? palette.primary : palette.border,
+                borderWidth: (showTutorial && tutorialStep === 1) ? 3 : 1,
+              }
+            ]}
             onPress={() => {
-              setEditingCategory(null);
-              setCategoryName('');
-              setCategoryModalVisible(true);
+              if (!showTutorial) { // Deshabilitar durante el tutorial
+                setEditingCategory(null); setCategoryName(''); setCategoryModalVisible(true);
+              }
             }}
           >
             <Ionicons name="create-outline" size={18} color={palette.primary} />
@@ -846,14 +1044,28 @@ export default function PendingScreen() {
             </Text>
           </TouchableOpacity>
 
-          <Text style={[styles.label, { color: palette.textOnSurface }]}>{t('screens.pending.addNew')}</Text>
-          <TextInput
-            style={[styles.input, { borderColor: palette.border, color: palette.textOnSurface }]}
-            placeholder={t('screens.pending.addNew')}
-            placeholderTextColor={palette.textSecondary}
-            value={taskText}
-            onChangeText={setTaskText}
-          />
+          {/* Entrada de texto y botón para agregar nueva tarea */}
+          <Text style={[styles.label, { color: colorScheme === 'light' ? '#000000' : palette.textOnSurface }]}>{t('screens.pending.addNew')}</Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+          >
+            <TextInput
+              style={[
+                styles.input,
+                { borderColor: colorScheme === 'light' ? '#333333' : palette.border, color: colorScheme === 'light' ? '#000000' : palette.textOnSurface, flex: 1 },
+              ]}
+              placeholder={t('screens.pending.addNew')}
+              placeholderTextColor={colorScheme === 'light' ? '#666666' : palette.textSecondary}
+              value={taskText}
+              onChangeText={setTaskText}
+              blurOnSubmit={false}
+              returnKeyType="done"
+              onSubmitEditing={handleAddTask}
+            />
+          </View>
 
           <TouchableOpacity
             style={[
@@ -871,13 +1083,24 @@ export default function PendingScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.tabs, { borderColor: palette.border }]}>
+        {/* Tabs para cambiar entre listas personales y compartidas */}
+        <View 
+          style={[
+            styles.tabs, 
+            { borderColor: palette.border },
+            showTutorial && tutorialStep === 2 && {
+              borderColor: palette.primary,
+              borderWidth: 2,
+            }
+          ]}
+        >
           <TouchableOpacity
             style={[
               styles.tab,
-              currentTab === 'personal' && { backgroundColor: palette.primary, borderColor: palette.primary },
+              currentTab === 'personal' && { backgroundColor: palette.primary },
             ]}
             onPress={() => handleSwitchTab('personal')}
+            activeOpacity={0.7}
           >
             <Text
               style={[
@@ -891,9 +1114,10 @@ export default function PendingScreen() {
           <TouchableOpacity
             style={[
               styles.tab,
-              currentTab === 'shared' && { backgroundColor: palette.primary, borderColor: palette.primary },
+              currentTab === 'shared' && { backgroundColor: palette.primary },
             ]}
             onPress={() => handleSwitchTab('shared')}
+            activeOpacity={0.7}
           >
             <Text
               style={[
@@ -906,10 +1130,18 @@ export default function PendingScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={[styles.hint, { color: palette.inputPlaceholder }]}>
+        {/* Hint para el usuario sobre cómo marcar tareas como completadas */}
+        <Text style={[
+          styles.hint, 
+          { 
+            color: (showTutorial && tutorialStep === 3) ? palette.primary : palette.inputPlaceholder,
+            fontWeight: (showTutorial && tutorialStep === 3) ? '700' : '400',
+          }
+        ]}>
           {t('screens.pending.completeHint')}
         </Text>
 
+        {/* Feedback condicional: cargando, error, vacío o render de listas */}
         {loading ? (
           <View style={styles.feedback}>
             <Ionicons name="hourglass-outline" size={24} color={palette.primary} />
@@ -925,25 +1157,49 @@ export default function PendingScreen() {
             </Text>
           </View>
         ) : (
+          // Renderiza cada lista (personal o compartida) y sus tareas
           currentLists.map((list) => {
             if (!list.todos || list.todos.length === 0) {
               return null;
             }
             const collapsed = !!collapsedMap[list.category_id];
+            // Destaca listas compartidas con cambios recientes
             const highlight =
               currentTab === 'shared' &&
               list.categoria_updated &&
-              recentTimes.some((time) => {
+                  recentTimes.some((time: Date) => {
                 const updatedAt = new Date(list.categoria_updated ?? '');
                 return updatedAt >= time;
               });
+
+                // Detectamos si todas las tareas están marcadas como completadas (status === 1)
+                const allCompleted = list.todos.length > 0 && list.todos.every((t) => t.status === 1);
+
+                const safeKey = list.category_id !== undefined && list.category_id !== null 
+                  ? String(list.category_id) 
+                  : `synthetic-${list.categoria}`;
+
             return (
               <View
-                key={String(list.category_id)}
+                    key={safeKey}
                 style={[
                   styles.listCard,
-                  { backgroundColor: palette.surface },
-                  highlight && styles.listCardHighlight,
+                      { backgroundColor: palette.surface, borderColor: palette.border },
+                      // Si hay cambios recientes, aplicamos un tinte del color primario (transparente)
+                      highlight && { 
+                        borderColor: palette.primary,
+                        backgroundColor: colorScheme === 'dark' ? `${palette.primary}20` : `${palette.primary}08` 
+                      },
+                      // Si la lista está completa, aplicamos el resplandor neón
+                      allCompleted && {
+                        shadowColor: palette.accent,
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: 0.8,
+                        shadowRadius: 12,
+                        elevation: 10,
+                        borderColor: palette.accent,
+                        borderWidth: 2,
+                      }
                 ]}
               >
                 <View style={styles.listHeader}>
@@ -952,15 +1208,20 @@ export default function PendingScreen() {
                     onPress={() => toggleList(list.category_id)}
                     activeOpacity={0.7}
                   >
-                    <View>
+                    <View style={{ flex: 1 }}>
                       <Text style={[styles.listTitle, { color: palette.textOnSurface }]}>{list.categoria}</Text>
-                      {currentTab === 'shared' && list.categoria_updated ? (
-                        <Text style={[styles.listSubtitle, { color: palette.inputPlaceholder }]}>
-                          {t('screens.pending.sharedInfo', { count: list.todos.length })}
-                        </Text>
-                      ) : null}
+                      {list.shared_with && list.shared_with.length > 0 && (
+                        <TouchableOpacity onPress={() => handleViewMembers(list)} hitSlop={10}>
+                          <Text style={[styles.listSubtitle, { color: palette.primary, fontWeight: '700', marginTop: 4 }]}>
+                            <Ionicons {...({} as any)} name="people-outline" size={14} />{' '}
+                            {t('screens.pending.sharedInfo', { 
+                              count: new Set(list.shared_with.map(m => m.id)).size 
+                            })}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
-                    <Ionicons
+                    <Ionicons {...({} as any)}
                       name={collapsed ? 'chevron-down' : 'chevron-up'}
                       size={20}
                       color={palette.inputPlaceholder}
@@ -969,11 +1230,11 @@ export default function PendingScreen() {
                   <View style={styles.listActions}>
                     {currentTab === 'personal' && (
                       <TouchableOpacity onPress={() => handleOpenShareModal(list)}>
-                        <Ionicons name="share-social-outline" size={20} color={palette.inputPlaceholder} />
+                        <Ionicons {...({} as any)} name="share-social-outline" size={20} color={palette.inputPlaceholder} />
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity onPress={() => handleClearCompleted(list.category_id)}>
-                      <Ionicons name="trash-outline" size={20} color={palette.accent} />
+                      <Ionicons {...({} as any)} name="trash-outline" size={20} color={palette.accent} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -984,10 +1245,10 @@ export default function PendingScreen() {
                         style={styles.todoMain}
                         onPress={() => handleCompleteTodo(todo.id, list.category_id)}
                       >
-                        <Ionicons
+                        <Ionicons {...({} as any)}
                           name={todo.status === 1 ? 'checkmark-circle' : 'ellipse-outline'}
                           size={20}
-                          color={todo.status === 1 ? '#5fed85' : palette.inputPlaceholder}
+                          color={todo.status === 1 ? '#9CA3AF' : palette.inputPlaceholder}
                         />
                         <Text
                           style={[
@@ -1007,7 +1268,7 @@ export default function PendingScreen() {
                           style={styles.todoEditButton}
                           onPress={() => handleEditTodo(todo, list.category_id)}
                         >
-                          <Ionicons name="create-outline" size={18} color={palette.inputPlaceholder} />
+                          <Ionicons {...({} as any)} name="create-outline" size={18} color={palette.inputPlaceholder} />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1018,9 +1279,11 @@ export default function PendingScreen() {
         )}
       </ScrollView>
 
+      {/* Modal para alta y edición de categorías */}
       <Modal visible={categoryModalVisible} transparent animationType="fade" onRequestClose={() => setCategoryModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: palette.surface }]}>
+            {/* Header del modal de categoría */}
             <View style={styles.modalHeaderRow}>
               <Text style={[styles.modalTitle, { color: palette.textOnSurface }]}>
                 {editingCategory ? t('screens.pending.editCategory') : t('screens.pending.addCategory')}
@@ -1033,16 +1296,24 @@ export default function PendingScreen() {
                 }}
                 hitSlop={8}
               >
-                <Ionicons name="close" size={20} color={palette.inputPlaceholder} />
+                <Ionicons {...({} as any)} name="close" size={20} color={palette.inputPlaceholder} />
               </TouchableOpacity>
             </View>
+            {/* Input para nombre de categoría */}
             <TextInput
-              style={[styles.input, { borderColor: palette.border, color: palette.textOnSurface }]}
+              style={[
+                styles.input,
+                { 
+                  borderColor: colorScheme === 'light' ? '#333333' : palette.border, 
+                  color: colorScheme === 'light' ? '#000000' : palette.textOnSurface 
+                }
+              ]}
               placeholder={t('screens.pending.categoryNamePlaceholder')}
-              placeholderTextColor={palette.textSecondary}
+              placeholderTextColor={colorScheme === 'light' ? '#666666' : palette.textSecondary}
               value={categoryName}
               onChangeText={setCategoryName}
             />
+            {/* Botones guardar/cancelar en el modal */}
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.secondaryButton}
@@ -1066,6 +1337,7 @@ export default function PendingScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Lista de categorías existentes personales con acciones editar/borrar */}
             <ScrollView style={styles.categoryList} keyboardShouldPersistTaps="handled">
               <View style={styles.categoryTableHeader}>
                 <Text style={[styles.tableHeaderLabel, { color: palette.inputPlaceholder }]}>
@@ -1082,10 +1354,10 @@ export default function PendingScreen() {
                   </Text>
                   <View style={styles.rowActions}>
                     <TouchableOpacity onPress={() => handleDeleteCategory(category)}>
-                      <Ionicons name="trash-outline" size={18} color={palette.accent} />
+                        <Ionicons {...({} as any)} name="trash-outline" size={18} color={palette.accent} />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleEditCategory(category)}>
-                      <Ionicons name="create-outline" size={18} color={palette.textSecondary} />
+                        <Ionicons {...({} as any)} name="create-outline" size={18} color={palette.textSecondary} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1100,9 +1372,11 @@ export default function PendingScreen() {
         </View>
       </Modal>
 
+      {/* Modal para compartir lista (busca usuario e invita) */}
       <Modal visible={shareModalVisible} transparent animationType="fade" onRequestClose={() => setShareModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: palette.surface }]}>
+            {/* Header del modal de compartir */}
             <View style={styles.modalHeaderRow}>
               <Text style={[styles.modalTitle, { color: palette.textOnSurface }]}>
                 {t('screens.pending.shareTitle')}
@@ -1115,21 +1389,28 @@ export default function PendingScreen() {
                 }}
                 hitSlop={8}
               >
-                <Ionicons name="close" size={20} color={palette.inputPlaceholder} />
+                <Ionicons {...({} as any)} name="close" size={20} color={palette.inputPlaceholder} />
               </TouchableOpacity>
             </View>
             <Text style={[styles.modalDescription, { color: palette.inputPlaceholder }]}>
-              {t('screens.pending.shareDescription')}
+              {t('screens.pending.shareDescriptionSearch')}
             </Text>
+            {/* Input de email para buscar usuario */}
             <TextInput
-              style={[styles.input, { borderColor: palette.border, color: palette.textOnSurface }]}
-              placeholder={t('screens.pending.shareEmailPlaceholder')}
-              placeholderTextColor={palette.textSecondary}
-              keyboardType="email-address"
+              style={[
+                styles.input,
+                { 
+                  borderColor: colorScheme === 'light' ? '#333333' : palette.border, 
+                  color: colorScheme === 'light' ? '#000000' : palette.textOnSurface 
+                }
+              ]}
+              placeholder={t('screens.pending.shareUser')}
+              placeholderTextColor={colorScheme === 'light' ? '#666666' : palette.textSecondary}
               autoCapitalize="none"
-              value={shareEmail}
-              onChangeText={setShareEmail}
+              value={shareSearch}
+              onChangeText={setShareSearch}
             />
+            {/* Botones buscar/cancelar y resultados búsqueda/invitación */}
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.secondaryButton, { flex: 1 }]}
@@ -1153,29 +1434,73 @@ export default function PendingScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+            {/* Mensaje de feedback búsqueda usuario al compartir */}
             {shareMessage ? (
               <Text style={[styles.feedbackText, { color: palette.inputPlaceholder }]}>{shareMessage}</Text>
             ) : null}
-            {shareLookup && (
-              <View style={styles.shareResult}>
-                <Text style={{ color: palette.textOnSurface }}>
-                  {t('screens.pending.shareUserFound', { name: shareLookup.name })}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: palette.primary }]}
-                  onPress={handleSendShareInvite}
-                  disabled={shareLoading}
-                >
-                  <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>
-                    {shareLoading ? '…' : t('screens.pending.shareInvite')}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+            {/* Resultado de búsqueda: permite invitar si encuentra usuario */}
+            {shareResults && shareResults.length > 0 && (
+              <ScrollView style={{ maxHeight: 250 }} showsVerticalScrollIndicator={false}>
+                <View style={styles.shareResult}>
+                  {shareResults.map((user) => (
+                    <View
+                      key={user.id}
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        paddingVertical: 10,
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderColor: palette.border,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.primary + '20', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                          {user.avatar ? (
+                            <Image {...({} as any)}
+                              source={{ uri: user.avatar.startsWith('http') ? user.avatar : `${API_CONFIG.baseUrl}${user.avatar}` }} 
+                              style={{ width: 40, height: 40 }} 
+                            />
+                          ) : (
+                            <Text style={{ color: palette.primary, fontWeight: '700' }}>{user.nombre?.charAt(0).toUpperCase() || '?'}</Text>
+                          )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: palette.textOnSurface, fontWeight: '600' }}>
+                            {user.nombre}
+                          </Text>
+                          <Text style={{ color: palette.inputPlaceholder, fontSize: 12 }} numberOfLines={1}>
+                            {user.correo}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.secondaryButton,
+                          { 
+                            borderColor: palette.primary, 
+                            paddingHorizontal: 10, 
+                            paddingVertical: 6, // Altura flexible basada en padding
+                            minWidth: 100,      // Más espacio para el texto en español
+                          }
+                        ]}
+                        onPress={() => handleSendShareInvite(String(user.id))}
+                      >
+                        <Text style={[styles.secondaryButtonLabel, { color: palette.primary, fontSize: 12 }]} numberOfLines={1}>
+                          {t('screens.pending.shareInvite')}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
             )}
           </View>
         </View>
       </Modal>
 
+      {/* Modal para editar texto de una tarea */}
       <Modal visible={editTodoModalVisible} transparent animationType="fade" onRequestClose={() => setEditTodoModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: palette.surface }]}>
@@ -1189,16 +1514,24 @@ export default function PendingScreen() {
                 }}
                 hitSlop={8}
               >
-                <Ionicons name="close" size={20} color={palette.inputPlaceholder} />
+                <Ionicons {...({} as any)} name="close" size={20} color={palette.inputPlaceholder} />
               </TouchableOpacity>
             </View>
+            {/* Input de edición de tarea */}
             <TextInput
-              style={[styles.input, { borderColor: palette.border, color: palette.textOnSurface }]}
+              style={[
+                styles.input,
+                { 
+                  borderColor: colorScheme === 'light' ? '#333333' : palette.border, 
+                  color: colorScheme === 'light' ? '#000000' : palette.textOnSurface 
+                }
+              ]}
               placeholder={t('screens.pending.editTask')}
-              placeholderTextColor={palette.textSecondary}
+              placeholderTextColor={colorScheme === 'light' ? '#666666' : palette.textSecondary}
               value={editingTodoText}
               onChangeText={setEditingTodoText}
             />
+            {/* Botones para guardar/cancelar edición de tarea */}
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.secondaryButton}
@@ -1225,6 +1558,7 @@ export default function PendingScreen() {
         </View>
       </Modal>
 
+      {/* Modal para confirmar el completado de una tarea */}
       <Modal
         visible={completeTaskModalVisible}
         transparent
@@ -1237,12 +1571,13 @@ export default function PendingScreen() {
                 {t('screens.pending.header')}
               </Text>
               <TouchableOpacity onPress={handleCancelCompleteTask} hitSlop={8}>
-                <Ionicons name="close" size={20} color={palette.inputPlaceholder} />
+                <Ionicons {...({} as any)} name="close" size={20} color={palette.inputPlaceholder} />
               </TouchableOpacity>
             </View>
             <Text style={[styles.modalDescription, { color: palette.inputPlaceholder }]}>
               {t('screens.pending.deleteTaskConfirm')}
             </Text>
+            {/* Botones para cancelar o completar la tarea */}
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[
@@ -1262,13 +1597,13 @@ export default function PendingScreen() {
                 style={[
                   styles.primaryButton,
                   {
-                    backgroundColor: '#5fed85',
+                    backgroundColor: palette.primary,
                     flex: 1,
                   },
                 ]}
                 onPress={handleConfirmCompleteTask}
                 disabled={completingTask}>
-                <Text style={[styles.primaryButtonLabel, { color: '#ffffff' }]}>
+                <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>
                   {completingTask ? '…' : t('screens.pending.completeTask')}
                 </Text>
               </TouchableOpacity>
@@ -1276,20 +1611,128 @@ export default function PendingScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal para ver miembros de la lista */}
+      <Modal visible={membersModalVisible} transparent animationType="slide" onRequestClose={() => setMembersModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: palette.surface }]}>
+            <View style={styles.modalHeaderRow}>
+              <View>
+                <Text style={[styles.modalTitle, { color: palette.textOnSurface }]}>{selectedListMembers?.name}</Text>
+                <Text style={[styles.label, { color: palette.inputPlaceholder, marginTop: 4 }]}>
+                  {t('screens.pending.sharedTab')}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setMembersModalVisible(false)} hitSlop={12}>
+                <Ionicons {...({} as any)} name="close-circle" size={28} color={palette.inputPlaceholder} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 300 }}>
+              {selectedListMembers?.members && selectedListMembers.members.length > 0 ? (
+                selectedListMembers.members.map((member) => (
+                  <View key={member.id} style={[styles.categoryRow, { borderColor: palette.border, paddingVertical: 15 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.primary + '20', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {member.avatar ? (
+                          <Image {...({} as any)}
+                            source={{ uri: member.avatar.startsWith('http') ? member.avatar : `${API_CONFIG.baseUrl}${member.avatar}` }} 
+                            style={{ width: 40, height: 40 }} 
+                          />
+                        ) : (
+                          <Text style={{ color: palette.primary, fontWeight: '700' }}>{member.nombre.charAt(0).toUpperCase()}</Text>
+                        )}
+                      </View>
+                      <Text style={[styles.categoryName, { color: palette.textOnSurface, fontWeight: '500' }]}>
+                        {member.nombre}
+                      </Text>
+                    </View>
+                    <Ionicons {...({} as any)} name="checkmark-circle" size={20} color={palette.primary} />
+                  </View>
+                ))
+              ) : (
+                <Text style={[styles.feedbackText, { color: palette.inputPlaceholder, paddingVertical: 20 }]}>
+                  {t('screens.notifications.empty')}
+                </Text>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, { backgroundColor: palette.primary, marginTop: 10 }]}
+              onPress={() => setMembersModalVisible(false)}>
+              <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>{t('common.ok')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal para el tutorial interactivo */}
+      <Modal visible={showTutorial} transparent animationType="fade">
+        <View style={styles.tutorialOverlay}>
+          <View style={[styles.tutorialCard, { backgroundColor: palette.surface }]}>
+            <View style={styles.tutorialHeader}>
+              <Ionicons 
+                name={
+                  tutorialStep === 0 ? 'arrow-up' : 
+                  tutorialStep === 1 ? 'arrow-up' : 
+                  tutorialStep === 2 ? 'arrow-up' : 
+                  'arrow-up'
+                } 
+                size={28} 
+                color={palette.primary} 
+              />
+              <Text style={[styles.tutorialStepText, { color: palette.inputPlaceholder }]}>
+                {tutorialStep + 1} / {tutorialSteps.length}
+              </Text>
+            </View>
+            
+            <View style={styles.tutorialContent}>
+              <Ionicons 
+                name={tutorialSteps[tutorialStep].icon as any} 
+                size={48} 
+                color={palette.primary} 
+              />
+              <Text style={[styles.tutorialTitle, { color: palette.textOnSurface }]}>
+                {tutorialSteps[tutorialStep].title}
+              </Text>
+              <Text style={[styles.tutorialDesc, { color: palette.inputPlaceholder }]}>
+                {tutorialSteps[tutorialStep].desc}
+              </Text>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.tutorialButton, { backgroundColor: palette.primary }]} 
+              onPress={handleNextTutorial}
+            >
+              <Text style={[styles.tutorialButtonText, { color: palette.buttonText }]}>
+                {tutorialStep === tutorialSteps.length - 1 ? t('common.ok') : t('screens.onboarding.next')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View> 
+      </Modal>
+
     </AppScreen>
   );
 }
 
+// ---------- Definición de estilos del componente ----------
 const styles = StyleSheet.create({
   content: {
-    padding: 24,
-    gap: 16,
+    paddingHorizontal: 20,
+    paddingTop: 20,
     paddingBottom: 120,
+    gap: 18,
   },
-  card: {
-    borderRadius: 28,
+    card: {
+    borderRadius: 24,
     padding: 20,
-    gap: 12,
+    gap: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   cardTitle: {
     fontSize: 20,
@@ -1318,9 +1761,14 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     borderRadius: 999,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
+    paddingVertical: 16,
+    paddingHorizontal: 26,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   primaryButtonLabel: {
     fontSize: 16,
@@ -1329,12 +1777,12 @@ const styles = StyleSheet.create({
   secondaryButton: {
     borderRadius: 999,
     paddingVertical: 12,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     borderWidth: 1.5,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
   },
   secondaryButtonLabel: {
     fontSize: 15,
@@ -1342,18 +1790,20 @@ const styles = StyleSheet.create({
   },
   tabs: {
     flexDirection: 'row',
-    borderWidth: 1.5,
-    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 16,
     overflow: 'hidden',
+    padding: 4,
   },
   tab: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: 'center',
-    borderRightWidth: 1,
+    borderRadius: 12,
   },
   tabLabel: {
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 14,
   },
   feedback: {
     alignItems: 'center',
@@ -1367,13 +1817,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   listCard: {
-    borderRadius: 24,
-    padding: 12,
-    gap: 8,
-  },
-  listCardHighlight: {
-    borderWidth: 1.5,
-    borderColor: '#84E882',
+    padding: 18,
+    borderRadius: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   listHeader: {
     flexDirection: 'row',
@@ -1387,8 +1839,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   listTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
   listSubtitle: {
     fontSize: 12,
@@ -1397,9 +1850,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: '#ffffff30',
+    borderColor: '#ffffff20',
   },
   todoMain: {
     flexDirection: 'row',
@@ -1411,6 +1864,7 @@ const styles = StyleSheet.create({
   },
   todoText: {
     fontSize: 16,
+    lineHeight: 22,
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
@@ -1421,7 +1875,7 @@ const styles = StyleSheet.create({
   },
   listActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 14,
     alignItems: 'center',
   },
   modalOverlay: {
@@ -1431,9 +1885,14 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalCard: {
-    borderRadius: 28,
-    padding: 20,
-    gap: 16,
+    borderRadius: 24,
+    padding: 22,
+    gap: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   modalHeaderRow: {
     flexDirection: 'row',
@@ -1511,5 +1970,59 @@ const styles = StyleSheet.create({
   shareResult: {
     gap: 12,
   },
+  tutorialOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: 24,
+    paddingBottom: 40,
+  },
+  tutorialCard: {
+    borderRadius: 28,
+    padding: 20,
+    gap: 16,
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+  },
+  tutorialHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+  },
+  tutorialStepText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  tutorialContent: {
+    gap: 12,
+    alignItems: 'center',
+  },
+  tutorialTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  tutorialDesc: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  tutorialButton: {
+    borderRadius: 999,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    minWidth: 120,
+  },
+  tutorialButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
 });
-

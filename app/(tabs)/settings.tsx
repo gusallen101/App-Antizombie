@@ -17,6 +17,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { AppScreen } from '@/components/layout/app-screen';
 import { API_CONFIG } from '@/constants/config';
@@ -25,10 +26,11 @@ import { useAppTheme } from '@/providers/app-theme-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
 type PaletteOverride = Partial<Palette>;
-type GenderOption = 'h' | 'm' | 'o';
+type GenderOption = 'h' | 'm';
 const REMINDER_TIME_KEY = '@settings:reminderTime';
 const REMINDER_NOTIFICATION_ID_KEY = '@settings:reminderNotificationId';
 const REMINDER_ENABLED_KEY = '@settings:reminderEnabled';
+const CHECK_TIME_KEY = '@settings:checkTime';
 
 const buildAvatarUrl = (path?: string | null) => {
   if (!path) {
@@ -108,12 +110,13 @@ export default function SettingsScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [savingReminder, setSavingReminder] = useState(false);
   const [tempReminderTime, setTempReminderTime] = useState<Date>(new Date());
+  const [checkTime, setCheckTime] = useState<Date | null>(null);
+  const [isSelectingCheckTime, setIsSelectingCheckTime] = useState(false);
 
   const genderOptions: Array<{ value: GenderOption; label: string }> = useMemo(
     () => [
       { value: 'h', label: t('screens.settings.genderOptions.h') },
       { value: 'm', label: t('screens.settings.genderOptions.m') },
-      { value: 'o', label: t('screens.settings.genderOptions.o') },
     ],
     [t],
   );
@@ -124,6 +127,13 @@ export default function SettingsScreen() {
     }
     return reminderTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }, [reminderTime, t]);
+  
+  const formattedCheckTime = useMemo(() => {
+    if (!checkTime) {
+      return t('screens.settings.checkReminderPlaceholder');
+    }
+    return checkTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, [checkTime, t]);
 
   const handleApplyPreset = (presetId: string) => {
     const preset = palettePresets.find((item) => item.id === presetId);
@@ -151,12 +161,13 @@ export default function SettingsScreen() {
 
   const loadProfile = useCallback(async () => {
     try {
-      const [[, storedName], [, storedEmail], [, storedAvatar], [, storedReminder], [, storedEnabled]] = await AsyncStorage.multiGet([
+      const [[, storedName], [, storedEmail], [, storedAvatar], [, storedReminder], [, storedEnabled], [, storedCheckTime]] = await AsyncStorage.multiGet([
         '@auth:name',
         '@auth:email',
         '@auth:avatar',
         REMINDER_TIME_KEY,
         REMINDER_ENABLED_KEY,
+        CHECK_TIME_KEY,
       ]);
       setProfileName(storedName ?? '');
       setProfileEmail(storedEmail ?? '');
@@ -164,20 +175,20 @@ export default function SettingsScreen() {
       if (storedReminder) {
         setReminderTime(new Date(storedReminder));
       }
+      if (storedCheckTime) {
+        setCheckTime(new Date(storedCheckTime));
+      }
       if (storedEnabled === 'true') {
         setReminderEnabled(true);
-        // Verify that the notification is still scheduled
         const storedNotificationId = await AsyncStorage.getItem(REMINDER_NOTIFICATION_ID_KEY);
         if (storedNotificationId) {
           const allScheduled = await Notifications.getAllScheduledNotificationsAsync();
           const notificationExists = allScheduled.some((n) => n.identifier === storedNotificationId);
           if (!notificationExists) {
-            // Notification was lost, disable the toggle
             setReminderEnabled(false);
             await AsyncStorage.setItem(REMINDER_ENABLED_KEY, 'false');
           }
         } else {
-          // No notification ID stored, disable
           setReminderEnabled(false);
           await AsyncStorage.setItem(REMINDER_ENABLED_KEY, 'false');
         }
@@ -202,7 +213,7 @@ export default function SettingsScreen() {
           await AsyncStorage.setItem('@auth:avatar', data.avatar);
         }
         if (data?.sexo) {
-          setGender((data.sexo as GenderOption) ?? 'h');
+          setGender(data.sexo === 'm' ? 'm' : 'h');
         }
       }
     } catch (error) {
@@ -356,14 +367,12 @@ export default function SettingsScreen() {
 
   const cancelAllReminders = useCallback(async () => {
     try {
-      // Cancel the stored notification ID
       const existingId = await AsyncStorage.getItem(REMINDER_NOTIFICATION_ID_KEY);
       if (existingId) {
         await Notifications.cancelScheduledNotificationAsync(existingId);
         await AsyncStorage.removeItem(REMINDER_NOTIFICATION_ID_KEY);
       }
       
-      // Also cancel all scheduled notifications to prevent duplicates
       const allScheduled = await Notifications.getAllScheduledNotificationsAsync();
       for (const notification of allScheduled) {
         await Notifications.cancelScheduledNotificationAsync(notification.identifier);
@@ -373,18 +382,19 @@ export default function SettingsScreen() {
     }
   }, []);
 
-  const handleSaveReminder = useCallback(async () => {
-    if (!reminderTime) {
+  const handleSaveReminder = useCallback(async (newReminderTime?: Date, newCheckTime?: Date) => {
+    const effectiveReminderTime = newReminderTime ?? reminderTime;
+    const effectiveCheckTime = newCheckTime ?? checkTime;
+
+    if (!effectiveReminderTime) {
       Alert.alert(t('screens.settings.reminderTitle'), t('screens.pending.errorMissingFields'));
       return;
     }
     try {
       setSavingReminder(true);
       
-      // Cancel all existing notifications first to prevent duplicates
       await cancelAllReminders();
       
-      // Request permissions
       const permission = await Notifications.requestPermissionsAsync({
         ios: {
           allowAlert: true,
@@ -401,7 +411,6 @@ export default function SettingsScreen() {
         return;
       }
 
-      // Create notification channel for Android
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('default', {
           name: 'Default',
@@ -412,34 +421,51 @@ export default function SettingsScreen() {
         });
       }
 
-      // Create trigger for daily notification (repeats every day at the same time)
-      const trigger: Notifications.CalendarTriggerInput = {
-        type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
-        hour: reminderTime.getHours(),
-        minute: reminderTime.getMinutes(),
-        repeats: true,
-        ...(Platform.OS === 'android' && { channelId: 'default' }),
+      const trigger: Notifications.NotificationTriggerInput = {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: effectiveReminderTime.getHours(),
+        minute: effectiveReminderTime.getMinutes(),
+        channelId: 'default',
       };
 
-      // Schedule the notification
       const notificationId = await Notifications.scheduleNotificationAsync({
         content: {
           title: t('screens.settings.reminderNotificationTitle'),
           body: t('screens.settings.reminderNotificationBody'),
           sound: true,
-          ...(Platform.OS === 'android' && {
-            priority: Notifications.AndroidNotificationPriority.HIGH,
-          }),
         },
         trigger,
       });
-      
-      // Store the notification ID and enabled state
-      await AsyncStorage.multiSet([
-        [REMINDER_TIME_KEY, reminderTime.toISOString()],
+
+      if (effectiveCheckTime) {
+        const checkTrigger: Notifications.NotificationTriggerInput = {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: effectiveCheckTime.getHours(),
+          minute: effectiveCheckTime.getMinutes(),
+          channelId: 'default',
+        };
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: t('screens.settings.reminderCheckTitle'),
+            body: t('screens.settings.reminderCheckBody'),
+            sound: true,
+          },
+          trigger: checkTrigger,
+        });
+      }
+
+      const storageItems: [string, string][] = [
+        [REMINDER_TIME_KEY, effectiveReminderTime.toISOString()],
         [REMINDER_NOTIFICATION_ID_KEY, notificationId],
         [REMINDER_ENABLED_KEY, 'true'],
-      ]);
+      ];
+
+      if (effectiveCheckTime) {
+        storageItems.push([CHECK_TIME_KEY, effectiveCheckTime.toISOString()]);
+      }
+
+      await AsyncStorage.multiSet(storageItems);
       
       setReminderEnabled(true);
       Alert.alert(
@@ -451,11 +477,10 @@ export default function SettingsScreen() {
     } finally {
       setSavingReminder(false);
     }
-  }, [reminderTime, cancelAllReminders, t]);
+  }, [reminderTime, checkTime, cancelAllReminders, t]);
 
   const handleToggleReminder = useCallback(async () => {
     if (reminderEnabled) {
-      // Disable reminder
       await cancelAllReminders();
       setReminderEnabled(false);
       await AsyncStorage.setItem(REMINDER_ENABLED_KEY, 'false');
@@ -464,7 +489,6 @@ export default function SettingsScreen() {
         t('screens.settings.reminderDisabledMessage'),
       );
     } else {
-      // Enable reminder - need to have a time set first
       if (!reminderTime) {
         Alert.alert(
           t('screens.settings.reminderTitle'),
@@ -478,413 +502,576 @@ export default function SettingsScreen() {
 
   return (
     <>
-      <AppScreen titleKey="tabs.settings">
-      <View style={[styles.section, styles.profileCard, { backgroundColor: palette.surface }]}>
-        <Text style={[styles.sectionTitle, { color: palette.textOnSurface }]}>{t('screens.settings.profileTitle')}</Text>
-        <Image
-          source={avatarUrl ? { uri: avatarUrl } : require('@/assets/images/icon.png')}
-          style={styles.avatar}
-        />
-        <Pressable
-          style={[
-            styles.secondaryButton,
-            { borderColor: palette.primary, alignSelf: 'center', paddingHorizontal: 24 },
-          ]}
-          onPress={handleChangeAvatar}
-        >
-          {savingAvatar ? (
-            <ActivityIndicator color={palette.primary} />
-          ) : (
-            <Text style={[styles.secondaryButtonLabel, { color: palette.primary }]}>
-              {t('screens.settings.avatarChange')}
-            </Text>
-          )}
-        </Pressable>
-
-        <View style={styles.editRow}>
-          <Text style={[styles.label, { color: palette.inputPlaceholder }]}>{t('screens.settings.nameLabel')}</Text>
-          <View style={styles.inlineForm}>
-            <TextInput
-              style={[styles.input, styles.inlineInput, { borderColor: palette.border, color: palette.textOnSurface }]}
-              value={profileName}
-              onChangeText={setProfileName}
+      <AppScreen titleKey="tabs.settings" contentContainerStyle={styles.screenContent}>
+        
+        {/* --- SECCIÓN AVATAR --- */}
+        <View style={styles.avatarSection}>
+          <View style={styles.avatarWrapper}>
+            <Image
+              source={avatarUrl ? { uri: avatarUrl } : require('@/assets/images/icon.png')}
+              style={[styles.avatar, { borderColor: palette.surface }]}
             />
             <Pressable
-              style={[styles.primaryButton, styles.inlineButton, { backgroundColor: palette.primary }]}
-              onPress={handleSaveName}
-              disabled={savingName}
+              style={[styles.avatarEditBadge, { backgroundColor: palette.primary, borderColor: palette.background }]}
+              onPress={handleChangeAvatar}
             >
-              <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>
-                {savingName ? '…' : t('screens.settings.saveChanges')}
-              </Text>
+              {savingAvatar ? (
+                <ActivityIndicator size="small" color={palette.buttonText} />
+              ) : (
+                <Ionicons name="camera" size={20} color={palette.buttonText} />
+              )}
             </Pressable>
           </View>
         </View>
 
-        <View style={styles.editRow}>
-          <Text style={[styles.label, { color: palette.inputPlaceholder }]}>{t('screens.settings.emailLabel')}</Text>
-          <View style={styles.inlineForm}>
-            <TextInput
-              style={[styles.input, styles.inlineInput, { borderColor: palette.border, color: palette.textOnSurface }]}
-              keyboardType='email-address'
-              autoCapitalize='none'
-              value={profileEmail}
-              onChangeText={setProfileEmail}
-            />
-            <Pressable
-              style={[styles.primaryButton, styles.inlineButton, { backgroundColor: palette.primary }]}
-              onPress={handleSaveEmail}
-              disabled={savingEmail}
-            >
-              <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>
-                {savingEmail ? '…' : t('screens.settings.saveChanges')}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.editRow}>
-          <Text style={[styles.label, { color: palette.inputPlaceholder }]}>{t('screens.settings.genderLabel')}</Text>
-          <View style={styles.inlineForm}>
-            <View style={[styles.pickerWrapper, styles.inlineInput, { borderColor: palette.border }, ]}>
-              <Picker
-                selectedValue={gender}
-                onValueChange={(value) => setGender(value as GenderOption)}
-                style={{ color: palette.textOnSurface }}
-                itemStyle={{ color: palette.textOnSurface }}>
-                {genderOptions.map((option) => (
-                  <Picker.Item key={option.value} label={option.label} value={option.value} color={palette.textOnSurface} />
-                ))}
-              </Picker>
+        {/* --- SECCIÓN PERFIL --- */}
+        <View style={styles.sectionContainer}>
+          <Text style={[styles.sectionTitleOutside, { color: palette.inputPlaceholder }]}>
+            {t('screens.settings.profileTitle')}
+          </Text>
+          <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            
+            {/* Nombre */}
+            <View style={styles.cardRow}>
+              <View style={styles.cardRowIcon}>
+                <Ionicons name="person-outline" size={22} color={colorScheme === 'light' ? '#000000' : palette.textSecondary} />
+              </View>
+              <View style={styles.cardRowContent}>
+                <Text style={[styles.cardRowLabel, { color: palette.inputPlaceholder }]}>{t('screens.settings.nameLabel')}</Text>
+                <TextInput
+                  style={[styles.cardRowInput, { color: palette.textOnSurface }]}
+                  value={profileName}
+                  onChangeText={setProfileName}
+                  placeholderTextColor={palette.inputPlaceholder}
+                />
+              </View>
+              <Pressable
+                style={[styles.savePill, { backgroundColor: palette.primary + '15' }]}
+                onPress={handleSaveName}
+                disabled={savingName}
+              >
+                {savingName ? (
+                  <ActivityIndicator size="small" color={palette.primary} />
+                ) : (
+                  <Text style={[styles.savePillText, { color: palette.primary }]}>{t('screens.settings.saveChanges')}</Text>
+                )}
+              </Pressable>
             </View>
-            <Pressable
-              style={[styles.primaryButton, styles.inlineButton, { backgroundColor: palette.primary }]}
-              onPress={handleSaveGender}
-              disabled={savingGender}
-            >
-              <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>
-                {savingGender ? '…' : t('screens.settings.saveChanges')}
-              </Text>
-            </Pressable>
+            <View style={[styles.divider, { backgroundColor: palette.border }]} />
+
+            {/* Email */}
+            <View style={styles.cardRow}>
+              <View style={styles.cardRowIcon}>
+                <Ionicons name="mail-outline" size={22} color={colorScheme === 'light' ? '#000000' : palette.textSecondary} />
+              </View>
+              <View style={styles.cardRowContent}>
+                <Text style={[styles.cardRowLabel, { color: palette.inputPlaceholder }]}>{t('screens.settings.emailLabel')}</Text>
+                <TextInput
+                  style={[styles.cardRowInput, { color: palette.textOnSurface }]}
+                  keyboardType='email-address'
+                  autoCapitalize='none'
+                  value={profileEmail}
+                  onChangeText={setProfileEmail}
+                  placeholderTextColor={palette.inputPlaceholder}
+                />
+              </View>
+              <Pressable
+                style={[styles.savePill, { backgroundColor: palette.primary + '15' }]}
+                onPress={handleSaveEmail}
+                disabled={savingEmail}
+              >
+                {savingEmail ? (
+                  <ActivityIndicator size="small" color={palette.primary} />
+                ) : (
+                  <Text style={[styles.savePillText, { color: palette.primary }]}>{t('screens.settings.saveChanges')}</Text>
+                )}
+              </Pressable>
+            </View>
+            <View style={[styles.divider, { backgroundColor: palette.border }]} />
+
+            {/* Género */}
+            <View style={styles.cardRow}>
+              <View style={styles.cardRowIcon}>
+                <Ionicons name="male-female-outline" size={22} color={colorScheme === 'light' ? '#000000' : palette.textSecondary} />
+              </View>
+              <View style={styles.cardRowContent}>
+                <Text style={[styles.cardRowLabel, { color: palette.inputPlaceholder }]}>{t('screens.settings.genderLabel')}</Text>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={gender}
+                    onValueChange={(value) => setGender(value as GenderOption)}
+                    style={{ color: palette.textOnSurface, margin: -10 }}
+                    itemStyle={{ color: palette.textOnSurface, fontSize: 16 }}>
+                    {genderOptions.map((option) => (
+                      <Picker.Item key={option.value} label={option.label} value={option.value} color={palette.textOnSurface} />
+                    ))}
+                  </Picker>
+                </View>
+              </View>
+              <Pressable
+                style={[styles.savePill, { backgroundColor: palette.primary + '15' }]}
+                onPress={handleSaveGender}
+                disabled={savingGender}
+              >
+                {savingGender ? (
+                  <ActivityIndicator size="small" color={palette.primary} />
+                ) : (
+                  <Text style={[styles.savePillText, { color: palette.primary }]}>{t('screens.settings.saveChanges')}</Text>
+                )}
+              </Pressable>
+            </View>
           </View>
         </View>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: palette.textPrimary }]}>
-          {t('screens.settings.themeSectionTitle')}
-        </Text>
-        <View style={styles.themeToggle}>
-          <Text style={[styles.body, { color: palette.inputPlaceholder }]}>
-            {colorScheme === 'dark'
-              ? t('screens.settings.themeModeDark')
-              : t('screens.settings.themeModeLight')}
+        {/* --- SECCIÓN APARIENCIA --- */}
+        <View style={styles.sectionContainer}>
+          <Text style={[styles.sectionTitleOutside, { color: palette.inputPlaceholder }]}>
+            {t('screens.settings.themeSectionTitle')}
           </Text>
-          <Pressable
-            onPress={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}
-            style={[
-              styles.toggleButton,
-              {
-                backgroundColor: palette.primary,
-              },
-            ]}>
-            <Text style={[styles.toggleLabel, { color: palette.buttonText }]}>
-              {colorScheme === 'dark'
-                ? t('screens.settings.switchToLight')
-                : t('screens.settings.switchToDark')}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: palette.textPrimary }]}>
-          {t('screens.settings.presetsTitle')}
-        </Text>
-        <View style={styles.grid}>
-          {palettePresets.map((preset) => (
-            <Pressable
-              key={preset.id}
-              onPress={() => handleApplyPreset(preset.id)}
-              style={[
-                styles.presetButton,
-                {
-                  backgroundColor: palette.surface,
-                  borderColor: palette.border,
-                },
-              ]}>
-              <View
-                style={[
-                  styles.colorPreview,
-                  {
-                    backgroundColor: preset.light.background,
-                  },
-                ]}
+          <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            
+            {/* Modo Oscuro/Claro */}
+            <View style={styles.cardRow}>
+              <View style={styles.cardRowIcon}>
+                <Ionicons name={colorScheme === 'dark' ? 'moon-outline' : 'sunny-outline'} size={22} color={colorScheme === 'light' ? '#000000' : palette.textSecondary} />
+              </View>
+              <View style={styles.cardRowContent}>
+                <Text style={[styles.cardRowValue, { color: palette.textOnSurface }]}>
+                  {colorScheme === 'dark' ? t('screens.settings.themeModeDark') : t('screens.settings.themeModeLight')}
+                </Text>
+              </View>
+              <Switch
+                value={colorScheme === 'dark'}
+                onValueChange={(value) => setColorScheme(value ? 'dark' : 'light')}
+                trackColor={{ 
+                  false: colorScheme === 'light' ? '#D1D5DB' : palette.border, 
+                  true: palette.primary 
+                }}
+                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : (colorScheme === 'dark' ? palette.buttonText : '#F3F4F6')}
+                ios_backgroundColor={colorScheme === 'light' ? '#D1D5DB' : palette.border}
               />
-              <Text style={[styles.presetLabel, { color: palette.textPrimary }]}>
-                {t(preset.labelKey)}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Pressable
-          onPress={handleReset}
-          style={[
-            styles.resetButton,
-            {
-              borderColor: palette.border,
-            },
-          ]}>
-          <Text style={[styles.resetLabel, { color: palette.inputPlaceholder }]}>
-            {t('screens.settings.reset')}
-          </Text>
-        </Pressable>
-      </View>
+            </View>
+            <View style={[styles.divider, { backgroundColor: palette.border }]} />
 
-      <View style={[styles.section, styles.profileCard, { backgroundColor: palette.surface }]}>
-        <View style={styles.reminderHeader}>
-          <Text style={[styles.sectionTitle, { color: palette.textOnSurface }]}>{t('screens.settings.reminderTitle')}</Text>
-          <Switch
-            value={reminderEnabled}
-            onValueChange={handleToggleReminder}
-            trackColor={{ false: palette.border, true: palette.primary }}
-            thumbColor={reminderEnabled ? palette.buttonText : palette.inputPlaceholder}
-            ios_backgroundColor={palette.border}
-            disabled={savingReminder}
-          />
-        </View>
-        <Text style={[styles.body, { color: palette.inputPlaceholder }]}>{t('screens.settings.reminderDescription')}</Text>
-        <View style={[styles.reminderRow, { borderColor: palette.border }]}>
-          <Text style={{ color: palette.textOnSurface }}>{formattedReminderTime}</Text>
-          <Pressable
-            style={[styles.secondaryButton, { borderColor: palette.primary }]}
-            onPress={() => {
-              setTempReminderTime(reminderTime ?? new Date());
-              setShowTimePicker(true);
-            }}
-          >
-            <Text style={[styles.secondaryButtonLabel, { color: palette.primary }]}>
-              {t('screens.settings.reminderSelect')}
-            </Text>
-          </Pressable>
-        </View>
-        {reminderTime && !reminderEnabled && (
-          <Pressable
-            style={[
-              styles.primaryButton,
-              { backgroundColor: palette.primary, alignItems: 'center', justifyContent: 'center' },
-            ]}
-            onPress={handleSaveReminder}
-            disabled={savingReminder}
-          >
-            {savingReminder ? (
-              <ActivityIndicator color={palette.buttonText} />
-            ) : (
-              <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>
-                {t('screens.settings.reminderActivate')}
+            {/* Paletas de Color */}
+            <View style={[styles.cardRow, { flexDirection: 'column', alignItems: 'stretch', paddingVertical: 16 }]}>
+              <Text style={[styles.cardRowLabel, { color: palette.inputPlaceholder, marginBottom: 12 }]}>
+                {t('screens.settings.presetsTitle')}
               </Text>
+              <View style={styles.presetsGrid}>
+                {palettePresets.map((preset) => (
+                  <Pressable
+                    key={preset.id}
+                    onPress={() => handleApplyPreset(preset.id)}
+                    style={[styles.presetItem, { backgroundColor: palette.background, borderColor: palette.border }]}
+                  >
+                    <View style={[styles.presetColorCircle, { backgroundColor: preset.light.background }]} />
+                    <Text style={[styles.presetItemText, { color: palette.textOnSurface }]} numberOfLines={1}>
+                      {t(preset.labelKey)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Pressable
+                onPress={handleReset}
+                style={[styles.resetButton, { backgroundColor: palette.border + '50' }]}
+              >
+                <Ionicons name="refresh-outline" size={16} color={colorScheme === 'light' ? '#000000' : palette.textOnSurface} />
+                <Text style={[styles.resetButtonText, { color: palette.textOnSurface }]}>
+                  {t('screens.settings.reset')}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+
+        {/* --- SECCIÓN RECORDATORIOS --- */}
+        <View style={styles.sectionContainer}>
+          <Text style={[styles.sectionTitleOutside, { color: palette.inputPlaceholder }]}>
+            {t('screens.settings.reminderTitle')}
+          </Text>
+          <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            
+            {/* Activar Recordatorios */}
+            <View style={styles.cardRow}>
+              <View style={styles.cardRowIcon}>
+                <Ionicons name="notifications-outline" size={22} color={colorScheme === 'light' ? '#000000' : palette.textSecondary} />
+              </View>
+              <View style={styles.cardRowContent}>
+                <Text style={[styles.cardRowValue, { color: palette.textOnSurface }]}>
+                  {t('screens.settings.reminderTitle')}
+                </Text>
+                <Text style={[styles.cardRowSubtitle, { color: palette.inputPlaceholder }]}>
+                  {t('screens.settings.reminderDescription')}
+                </Text>
+              </View>
+              <Switch
+                value={reminderEnabled}
+                onValueChange={handleToggleReminder}
+                trackColor={{ 
+                  false: colorScheme === 'light' ? '#D1D5DB' : palette.border, 
+                  true: palette.primary 
+                }}
+                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : (reminderEnabled ? palette.buttonText : '#F3F4F6')}
+                ios_backgroundColor={colorScheme === 'light' ? '#D1D5DB' : palette.border}
+                disabled={savingReminder}
+              />
+            </View>
+            <View style={[styles.divider, { backgroundColor: palette.border }]} />
+
+            {/* Hora Recordatorio */}
+            <View style={styles.cardRow}>
+              <View style={styles.cardRowIcon}>
+                <Ionicons name="time-outline" size={22} color={colorScheme === 'light' ? '#000000' : palette.textSecondary} />
+              </View>
+              <View style={styles.cardRowContent}>
+                <Text style={[styles.cardRowValue, { color: palette.textOnSurface }]}>
+                  {formattedReminderTime}
+                </Text>
+                <Text style={[styles.cardRowLabel, { color: palette.inputPlaceholder }]}>
+                  {t('screens.settings.reminderSelect')}
+                </Text>
+              </View>
+              <Pressable
+                style={[styles.iconButton, { backgroundColor: palette.primary + '15' }]}
+                onPress={() => {
+                  setTempReminderTime(reminderTime ?? new Date());
+                  setIsSelectingCheckTime(false);
+                  setShowTimePicker(true);
+                }}
+              >
+                <Ionicons name="pencil" size={18} color={palette.primary} />
+              </Pressable>
+            </View>
+            <View style={[styles.divider, { backgroundColor: palette.border }]} />
+
+            {/* Hora de Chequeo */}
+            <View style={styles.cardRow}>
+              <View style={styles.cardRowIcon}>
+                <Ionicons name="alarm-outline" size={22} color={colorScheme === 'light' ? '#000000' : palette.textSecondary} />
+              </View>
+              <View style={styles.cardRowContent}>
+                <Text style={[styles.cardRowValue, { color: palette.textOnSurface }]}>
+                  {formattedCheckTime}
+                </Text>
+                <Text style={[styles.cardRowLabel, { color: palette.inputPlaceholder }]}>
+                  {t('screens.settings.checkReminderSelect')}
+                </Text>
+              </View>
+              <Pressable
+                style={[styles.iconButton, { backgroundColor: palette.primary + '15' }]}
+                onPress={() => {
+                  setTempReminderTime(checkTime ?? new Date());
+                  setIsSelectingCheckTime(true);
+                  setShowTimePicker(true);
+                }}
+              >
+                <Ionicons name="pencil" size={18} color={palette.primary} />
+              </Pressable>
+            </View>
+
+            {/* Botón de Guardado extra si está inactivo */}
+            {reminderTime && !reminderEnabled && (
+              <Pressable
+                style={[styles.activateButton, { backgroundColor: palette.primary }]}
+                onPress={() => handleSaveReminder()}
+                disabled={savingReminder}
+              >
+                {savingReminder ? (
+                  <ActivityIndicator color={palette.buttonText} />
+                ) : (
+                  <Text style={[styles.activateButtonText, { color: palette.buttonText }]}>
+                    {t('screens.settings.reminderActivate')}
+                  </Text>
+                )}
+              </Pressable>
             )}
-          </Pressable>
-        )}
-      </View>
+
+          </View>
+        </View>
 
       </AppScreen>
 
-      <Modal
-        visible={showTimePicker}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setShowTimePicker(false)}>
-        <Pressable
-          style={styles.pickerOverlay}
-          onPress={() => setShowTimePicker(false)}>
-          <Pressable onPress={(e) => e.stopPropagation()}>
-          <View style={[styles.pickerCard, { backgroundColor: palette.surface }]}>
-            <DateTimePicker
-              value={tempReminderTime}
-              mode='time'
-              display={Platform.OS === 'ios' ? 'inline' : 'spinner'}
-              onChange={(_, date) => date && setTempReminderTime(date)}
-              textColor={palette.textOnSurface}
-              themeVariant={colorScheme}
-            />
-            <View style={styles.pickerButtons}>
-              <Pressable
-                style={[styles.secondaryButton, styles.pickerButton]}
-                onPress={() => setShowTimePicker(false)}
-              >
-                <Text style={[styles.secondaryButtonLabel, { color: palette.inputPlaceholder }]}>
-                  {t('screens.financialHealth.cancel')}
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.primaryButton, styles.pickerButton, { backgroundColor: palette.primary }]}
-                onPress={async () => {
-                  setReminderTime(tempReminderTime);
-                  setShowTimePicker(false);
-                  // If reminder is enabled, automatically reschedule with new time
-                  if (reminderEnabled) {
-                    await handleSaveReminder();
-                  }
-                }}
-              >
-                <Text style={[styles.primaryButtonLabel, { color: palette.buttonText }]}>
-                  {t('screens.settings.reminderSelect')}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
+      {/* --- MODALES NATIVOS DE TIEMPO --- */}
+      {Platform.OS === 'ios' && showTimePicker && (
+        <Modal
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={() => setShowTimePicker(false)}
+        >
+          <Pressable
+            style={styles.pickerOverlay}
+            onPress={() => {
+              setIsSelectingCheckTime(false);
+              setShowTimePicker(false);
+            }}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              <View style={[styles.pickerCard, { backgroundColor: palette.surface }]}>
+                <DateTimePicker
+                  value={tempReminderTime}
+                  mode="time"
+                  display="spinner"
+                  onChange={(_, date) => date && setTempReminderTime(date)}
+                  textColor={palette.textOnSurface}
+                  themeVariant={colorScheme}
+                />
+
+                <View style={styles.pickerButtons}>
+                  <Pressable
+                    style={[styles.pickerCancelButton]}
+                    onPress={() => {
+                      setIsSelectingCheckTime(false);
+                      setShowTimePicker(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerButtonText, { color: palette.inputPlaceholder }]}>
+                      {t('screens.financialHealth.cancel')}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.pickerConfirmButton, { backgroundColor: palette.primary }]}
+                    onPress={async () => {
+                      if (isSelectingCheckTime) {
+                        setCheckTime(tempReminderTime);
+                        await AsyncStorage.setItem(CHECK_TIME_KEY, tempReminderTime.toISOString());
+                        if (reminderEnabled) {
+                          await handleSaveReminder(undefined, tempReminderTime);
+                        }
+                      } else {
+                        setReminderTime(tempReminderTime);
+                        await AsyncStorage.setItem(REMINDER_TIME_KEY, tempReminderTime.toISOString());
+                        if (reminderEnabled) {
+                          await handleSaveReminder(tempReminderTime);
+                        }
+                      }
+                      setIsSelectingCheckTime(false);
+                      setShowTimePicker(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerButtonText, { color: palette.buttonText, fontWeight: '700' }]}>
+                      {t('common.ok')}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+      )}
+      {Platform.OS === 'android' && showTimePicker && (
+        <DateTimePicker
+          value={tempReminderTime}
+          mode="time"
+          display="spinner"
+          onChange={(event, date) => {
+            if (event.type !== 'set') {
+              setIsSelectingCheckTime(false);
+              setShowTimePicker(false);
+              return;
+            }
+
+            if (!date) return;
+
+            if (isSelectingCheckTime) {
+              setCheckTime(date);
+              void AsyncStorage.setItem(CHECK_TIME_KEY, date.toISOString());
+              if (reminderEnabled) {
+                void handleSaveReminder(undefined, date);
+              }
+            } else {
+              setReminderTime(date);
+              void AsyncStorage.setItem(REMINDER_TIME_KEY, date.toISOString());
+              if (reminderEnabled) {
+                void handleSaveReminder(date);
+              }
+            }
+
+            setIsSelectingCheckTime(false);
+            setShowTimePicker(false);
+          }}
+        />
+      )}
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  section: {
-    gap: 12,
-    marginBottom: 16,
+  screenContent: {
+    paddingBottom: Platform.OS === 'ios' ? 108 : 96,
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
-  profileCard: {
-    borderRadius: 28,
-    padding: 20,
-    gap: 16,
+  
+  // Avatar
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: 32,
+    marginTop: 8,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+  avatarWrapper: {
+    position: 'relative',
   },
-  body: {
-    fontSize: 16,
+  avatar: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 4,
   },
-  label: {
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Sections & Cards
+  sectionContainer: {
+    marginBottom: 28,
+  },
+  sectionTitleOutside: {
     fontSize: 13,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.7,
-    fontWeight: '600',
+    letterSpacing: 1.2,
+    marginLeft: 16,
+    marginBottom: 8,
   },
-  themeToggle: {
+  card: {
+    borderRadius: 24,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  cardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  toggleButton: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
+    paddingVertical: 14,
+    minHeight: 70,
   },
-  toggleLabel: {
-    fontSize: 14,
+  cardRowIcon: {
+    width: 36,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  cardRowContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  cardRowLabel: {
+    fontSize: 12,
     fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
-  grid: {
+  cardRowValue: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  cardRowSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
+    lineHeight: 18,
+    paddingRight: 16,
+  },
+  cardRowInput: {
+    fontSize: 16,
+    fontWeight: '500',
+    padding: 0,
+    margin: 0,
+  },
+  divider: {
+    height: 1,
+    marginLeft: 52,
+  },
+  pickerContainer: {
+    justifyContent: 'center',
+    marginLeft: -16,
+  },
+
+  // Botones estilo Píldora e Íconos
+  savePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginLeft: 12,
+  },
+  savePillText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+
+  // Grid Presets
+  presetsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+    marginBottom: 16,
   },
-  presetButton: {
-    width: '48%',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
-    gap: 8,
-  },
-  colorPreview: {
-    height: 60,
-    borderRadius: 8,
-  },
-  presetLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  resetButton: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderRadius: 999,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-  },
-  resetLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    alignSelf: 'center',
-  },
-  editRow: {
-    gap: 6,
-  },
-  inlineForm: {
+  presetItem: {
+    flex: 1,
+    minWidth: '45%',
     flexDirection: 'row',
-    gap: 12,
     alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 10,
   },
-  input: {
-    borderWidth: 1.5,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+  presetColorCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
   },
-  inlineInput: {
+  presetItemText: {
+    fontSize: 14,
+    fontWeight: '600',
     flex: 1,
   },
-  inlineButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  reminderHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  reminderRow: {
-    borderWidth: 1.5,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  pickerWrapper: {
-    borderWidth: 1.5,
-    borderRadius: 20,
-  },
-  primaryButton: {
-    borderRadius: 999,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+  resetButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 16,
+    gap: 8,
   },
-  primaryButtonLabel: {
+  resetButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // Botón largo final
+  activateButton: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    marginTop: 8,
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  activateButtonText: {
     fontSize: 15,
     fontWeight: '700',
   },
-  secondaryButton: {
-    borderWidth: 1.5,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  secondaryButtonLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
+
+  // Modales
   pickerOverlay: {
     flex: 1,
     backgroundColor: '#00000070',
@@ -894,17 +1081,28 @@ const styles = StyleSheet.create({
   },
   pickerCard: {
     width: '90%',
-    borderRadius: 24,
-    padding: 16,
-    gap: 12,
+    borderRadius: 28,
+    padding: 20,
+    gap: 16,
   },
   pickerButtons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 12,
+    marginTop: 8,
   },
-  pickerButton: {
-    flex: 0,
+  pickerCancelButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  pickerConfirmButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  pickerButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
-

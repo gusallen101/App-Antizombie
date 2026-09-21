@@ -38,6 +38,9 @@ type GoalPayload = {
   tareas: string[] | string;
   porcentaje: number | string;
   tipo: number;
+  frecuencia?: number | string;
+  conteo_actual?: number | string;
+  ejecutadas?: number | string;
 };
 
 type Goal = {
@@ -46,6 +49,8 @@ type Goal = {
   tasks: string[];
   progress: number;
   tipo: number;
+  targetFrequency: number;
+  currentCount: number;
 };
 
 const CIRCLE_RADIUS = 54;
@@ -69,12 +74,21 @@ export default function ViewGoalsScreen() {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [editName, setEditName] = useState('');
   const [editTasks, setEditTasks] = useState<string[]>(['']);
+  const [editFrequency, setEditFrequency] = useState('1');
   const [savingEdit, setSavingEdit] = useState(false);
   const [goalToComplete, setGoalToComplete] = useState<Goal | null>(null);
   const [completingGoal, setCompletingGoal] = useState(false);
+  const [goalToReset, setGoalToReset] = useState<Goal | null>(null);
+  const [resetingGoal, setResetingGoal] = useState(false);
 
   const hasFocusedOnce = useRef(false);
   const categoryRef = useRef(category);
+
+  useEffect(() => {
+  if (isGoalCategoryKey(params.category)) {
+    setCategory(params.category);
+  }
+}, [params.category]);
 
   useEffect(() => {
     categoryRef.current = category;
@@ -94,8 +108,12 @@ export default function ViewGoalsScreen() {
             .split('|')
             .map((task) => task.trim())
             .filter(Boolean),
-      progress: Number.parseFloat(String(payload.porcentaje ?? '0')) || 0,
+      progress: Number(payload.porcentaje) || 0,
       tipo: payload.tipo,
+      // Mapeamos 'frecuencia' y 'conteo_actual' desde el JSON del backend
+      // Soportamos tanto 'conteo_actual' como 'ejecutadas' (nombre que usa tu PHP)
+      targetFrequency: Math.max(Number(payload.frecuencia) || 1, 1),
+      currentCount: Math.max(Number(payload.conteo_actual ?? payload.ejecutadas) || 0, 0),
     }),
     [],
   );
@@ -146,16 +164,14 @@ export default function ViewGoalsScreen() {
   );
 
   useEffect(() => {
-    void fetchGoals(category);
+    void fetchGoals(categoryRef.current);
   }, [category, fetchGoals]);
 
   useFocusEffect(
     useCallback(() => {
-      if (hasFocusedOnce.current) {
-        void fetchGoals(categoryRef.current);
-      } else {
-        hasFocusedOnce.current = true;
-      }
+      // Siempre se recargan las metas cuando la pantalla entra en foco
+      // para asegurar que el progreso esté actualizado.
+      void fetchGoals(categoryRef.current);
     }, [fetchGoals]),
   );
 
@@ -169,6 +185,7 @@ export default function ViewGoalsScreen() {
       setEditingGoal(goal);
       setEditName(goal.etiqueta);
       setEditTasks(goal.tasks.length ? goal.tasks : ['']);
+      setEditFrequency(String(goal.targetFrequency));
       setEditModalVisible(true);
     },
     [],
@@ -189,6 +206,16 @@ export default function ViewGoalsScreen() {
 
   const handleRemoveEditTask = useCallback((index: number) => {
     setEditTasks((prev) => (prev.length === 1 ? prev : prev.filter((_, idx) => idx !== index)));
+  }, []);
+
+  const handleEditFrequencyChange = useCallback((value: string) => {
+    let numericValue = value.replace(/[^0-9]/g, '');
+    if (numericValue !== '') {
+      const val = Number(numericValue);
+      if (val > 7) numericValue = '7';
+      if (val < 1) numericValue = '1';
+    }
+    setEditFrequency(numericValue);
   }, []);
 
   const handleUpdateGoal = useCallback(async () => {
@@ -223,6 +250,7 @@ export default function ViewGoalsScreen() {
       params.append('id_meta', String(editingGoal.id));
       params.append('etiqueta', trimmedName);
       params.append('tareas', formattedTasks.join('|'));
+      params.append('frecuencia', editFrequency);
 
       const response = await fetch(`${API_CONFIG.baseUrl}update/meta`, {
         method: 'POST',
@@ -241,8 +269,20 @@ export default function ViewGoalsScreen() {
         t('screens.viewGoals.editSuccessTitle'),
         t('screens.viewGoals.editSuccessMessage'),
       );
+      setGoals((prev) =>
+        prev.map((g) =>
+          g.id === editingGoal.id
+            ? {
+                ...g,
+                etiqueta: trimmedName,
+                tasks: formattedTasks,
+                targetFrequency: Number(editFrequency),
+              }
+            : g,
+        ),
+      );
+
       closeEditModal();
-      void fetchGoals();
     } catch (caughtError) {
       Alert.alert(
         t('screens.goals.form.errorTitle'),
@@ -301,9 +341,62 @@ export default function ViewGoalsScreen() {
     }
   }, [fetchGoals, goalToComplete, handleCancelComplete, t]);
 
+  const handleResetGoal = useCallback((goal: Goal) => {
+    setGoalToReset(goal);
+  }, []);
+
+  const handleCancelReset = useCallback(() => {
+    setGoalToReset(null);
+    setResetingGoal(false);
+  }, []);
+
+  const handleConfirmReset = useCallback(async () => {
+    if (!goalToReset) {
+      return;
+    }
+
+    try {
+      setResetingGoal(true);
+      const apikey = await AsyncStorage.getItem('@auth:apikey');
+
+      if (!apikey) {
+        throw new Error(t('auth.loginErrorFallback'));
+      }
+
+      const response = await fetch(`${API_CONFIG.baseUrl}reiniciar-meta/${goalToReset.id}`, {
+        headers: {
+          apikey,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(t('screens.viewGoals.errorTitle'));
+      }
+
+      Alert.alert(
+        t('screens.viewGoals.resetSuccessTitle'),
+        t('screens.viewGoals.resetSuccessMessage'),
+      );
+      handleCancelReset();
+      void fetchGoals(categoryRef.current);
+    } catch (caughtError) {
+      Alert.alert(
+        t('screens.viewGoals.errorTitle'),
+        caughtError instanceof Error ? caughtError.message : t('screens.viewGoals.errorTitle'),
+      );
+    } finally {
+      setResetingGoal(false);
+    }
+  }, [fetchGoals, goalToReset, handleCancelReset, t]);
+
   const renderProgressRing = useCallback(
-    (value: number) => {
-      const progress = Math.min(Math.max(value, 0), 100);
+    (goal: Goal) => {
+      // Lógica de supervivencia: el 100% se alcanza al llegar a la frecuencia semanal
+      const rawProgress = goal.targetFrequency > 0 
+        ? (goal.currentCount / goal.targetFrequency) * 100 
+        : 0;
+      const progress = Math.min(Math.max(rawProgress, 0), 100);
+
       const strokeDashoffset = CIRCUMFERENCE - (progress / 100) * CIRCUMFERENCE;
 
       return (
@@ -337,11 +430,14 @@ export default function ViewGoalsScreen() {
             <Text style={[styles.progressLabel, { color: palette.inputPlaceholder }]}>
               {t('screens.viewGoals.progressLabel', { value: progress.toFixed(0) })}
             </Text>
+            <Text style={{ fontSize: 10, color: palette.inputPlaceholder, marginTop: 2 }}>
+              {goal.currentCount} / {goal.targetFrequency}
+            </Text>
           </View>
         </View>
       );
     },
-    [palette.border, palette.primary, palette.textPrimary, palette.textSecondary, t],
+    [palette.border, palette.primary, palette.textPrimary, t],
   );
 
   const heroDescription = t('screens.viewGoals.heroDescription', {
@@ -416,7 +512,7 @@ export default function ViewGoalsScreen() {
         <View style={styles.feedbackWrapper}>
           <Ionicons name="alert-circle-outline" size={32} color={palette.accent} />
           <Text style={[styles.feedbackLabel, { color: palette.textOnSurface }]}>{error}</Text>
-          <TouchableOpacity onPress={() => void fetchGoals()}>
+          <TouchableOpacity onPress={() => void fetchGoals(categoryRef.current)}>
             <Text style={[styles.retryLabel, { color: palette.primary }]}>
               {t('screens.viewGoals.retry')}
             </Text>
@@ -441,13 +537,16 @@ export default function ViewGoalsScreen() {
                 <TouchableOpacity onPress={() => openEditModal(goal)} style={styles.goalActionButton}>
                   <Ionicons name="create-outline" size={18} color={palette.textOnSurface} />
                 </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleResetGoal(goal)} style={styles.goalActionButton}>
+                  <Ionicons name="refresh-outline" size={18} color={palette.textOnSurface} />
+                </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleCompleteGoal(goal)} style={styles.goalActionButton}>
                   <Ionicons name="checkmark-done-outline" size={18} color={palette.textOnSurface} />
                 </TouchableOpacity>
               </View>
             </View>
             <View style={styles.goalBody}>
-              {renderProgressRing(goal.progress)}
+              {renderProgressRing(goal)}
               <View style={styles.taskList}>
                 <Text style={[styles.taskHeading, { color: palette.textOnSurface }]}>
                   {t('screens.viewGoals.tasksHeading')}
@@ -507,6 +606,21 @@ export default function ViewGoalsScreen() {
                   placeholderTextColor={palette.textSecondary}
                   value={editName}
                   onChangeText={setEditName}
+                />
+
+                <Text style={[styles.label, { color: palette.textOnSurface }]}>
+                  {t('screens.goals.form.frequencyLabel')}
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    { borderColor: palette.border, color: palette.textOnSurface },
+                  ]}
+                  placeholder={t('screens.goals.form.frequencyPlaceholder')}
+                  placeholderTextColor={palette.textSecondary}
+                  value={editFrequency}
+                  onChangeText={handleEditFrequencyChange}
+                  keyboardType="number-pad"
                 />
 
                 <Text style={[styles.label, { color: palette.textOnSurface }]}>
@@ -608,13 +722,57 @@ export default function ViewGoalsScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={!!goalToReset}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelReset}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.confirmCard, { backgroundColor: palette.surface }]}>
+            <View style={styles.confirmIcon}>
+              <Ionicons name="refresh-outline" size={28} color={palette.primary} />
+            </View>
+            <Text style={[styles.modalTitle, { color: palette.textOnSurface }]}>
+              {t('screens.viewGoals.resetTitle')}
+            </Text>
+            <Text style={[styles.confirmDescription, { color: palette.inputPlaceholder }]}>
+              {t('screens.viewGoals.resetDescription', {
+                goal: goalToReset?.etiqueta ?? '',
+              })}
+            </Text>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={handleCancelReset}
+                disabled={resetingGoal}
+              >
+                <Text style={[styles.cancelLabel, { color: palette.inputPlaceholder }]}>
+                  {t('common.cancel')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: palette.primary }]}
+                onPress={handleConfirmReset}
+                disabled={resetingGoal}
+              >
+                <Text style={[styles.saveLabel, { color: palette.buttonText }]}>
+                  {resetingGoal ? '…' : t('screens.viewGoals.resetConfirm')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
   screenContent: {
-    paddingBottom: 48,
+    paddingBottom: Platform.OS === 'ios' ? 108 : 96, // Ajustado para la barra de pestañas flotante
     gap: 16,
   },
   heroCard: {
@@ -877,5 +1035,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-
-

@@ -4,18 +4,17 @@ import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 import { LanguageSwitcher } from '@/components/language-switcher';
@@ -24,13 +23,15 @@ import { useApiMessages } from '@/hooks/use-api-messages';
 import { useAppTheme } from '@/providers/app-theme-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
-type GenderOption = 'h' | 'm' | 'o';
+// Se eliminó la opción 'o'
+type GenderOption = 'h' | 'm';
 
 export default function RegisterScreen() {
   const router = useRouter();
   const { palette } = useAppTheme();
   const { t } = useLocalization();
   const { translateError } = useApiMessages();
+  
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,6 +39,7 @@ export default function RegisterScreen() {
   const [gender, setGender] = useState<GenderOption>('h');
   const [showGenderPicker, setShowGenderPicker] = useState(false);
   const [tempGender, setTempGender] = useState<GenderOption>('h');
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -108,7 +110,6 @@ export default function RegisterScreen() {
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         const apiMessage = payload?.message ?? payload?.error;
-        // Traducir el mensaje de la API al idioma actual
         const message = translateError(apiMessage, t('register.error'));
         throw new Error(message);
       }
@@ -161,18 +162,14 @@ export default function RegisterScreen() {
         AsyncStorage.setItem('now-is', '[]'),
       ]);
 
-      // Mostrar mensaje de éxito visual
       setSuccess(true);
       setLoading(false);
 
-      // Navegar automáticamente después de un breve delay para asegurar que todo se guardó
-      // Esto evita problemas con Alert.alert en Android (especialmente Xiaomi/HyperOS)
       setTimeout(() => {
         try {
           router.replace('/(tabs)/home');
         } catch (navigationError) {
           console.error('Navigation error after registration:', navigationError);
-          // Fallback: intentar navegar de nuevo después de otro breve delay
           setTimeout(() => {
             router.replace('/(tabs)/home');
           }, 500);
@@ -186,7 +183,6 @@ export default function RegisterScreen() {
       setSuccess(false);
       console.error('Registration error:', caughtError);
     } finally {
-      // No cambiar loading aquí si fue exitoso, ya que se maneja arriba
       if (!success) {
         setLoading(false);
       }
@@ -199,90 +195,46 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[
-        styles.container,
-        {
-          backgroundColor: palette.background,
-        },
-      ]}
+      style={[styles.container, { backgroundColor: palette.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        
+        {/* Selector de idioma */}
         <View style={styles.languageContainer}>
           <LanguageSwitcher />
         </View>
+
+        {/* Hero / Encabezado (Moderno alineado a la izquierda) */}
         <View style={styles.heroContainer}>
-          <Text
-            style={[
-              styles.title,
-              {
-                color: palette.textPrimary,
-              },
-            ]}>
+          <Text style={[styles.title, { color: palette.textPrimary }]}>
             {t('register.title')}
           </Text>
-          <Image
-            source={require('@/assets/images/icon.png')}
-            style={styles.avatar}
-            resizeMode="contain"
-          />
         </View>
 
+        {/* Formulario */}
         <View style={styles.form}>
-          <View
-            style={[
-              styles.inputContainer,
-              {
-                backgroundColor: palette.inputBackground,
-                borderColor: palette.inputBorder,
-              },
-            ]}>
-            <Ionicons
-              name="person-outline"
-              size={20}
-              color={palette.inputPlaceholder}
-              style={styles.inputIcon}
-            />
+          
+          <View style={[styles.inputContainer, { backgroundColor: palette.inputBackground, borderColor: palette.border + '50' }]}>
+            <Ionicons name="person-outline" size={22} color={palette.inputPlaceholder} style={styles.inputIcon} />
             <TextInput
               value={fullName}
               onChangeText={setFullName}
               placeholder={t('register.fullNamePlaceholder')}
               placeholderTextColor={palette.inputPlaceholder}
-              style={[
-                styles.input,
-                {
-                  color: palette.inputText,
-                },
-              ]}
+              style={[styles.input, { color: palette.inputText }]}
               autoCapitalize="words"
               textContentType="name"
             />
           </View>
 
-          <View
-            style={[
-              styles.inputContainer,
-              {
-                backgroundColor: palette.inputBackground,
-                borderColor: palette.inputBorder,
-              },
-            ]}>
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={palette.inputPlaceholder}
-              style={styles.inputIcon}
-            />
+          <View style={[styles.inputContainer, { backgroundColor: palette.inputBackground, borderColor: palette.border + '50' }]}>
+            <Ionicons name="mail-outline" size={22} color={palette.inputPlaceholder} style={styles.inputIcon} />
             <TextInput
               value={email}
               onChangeText={setEmail}
               placeholder={t('register.emailPlaceholder')}
               placeholderTextColor={palette.inputPlaceholder}
-              style={[
-                styles.input,
-                {
-                  color: palette.inputText,
-                },
-              ]}
+              style={[styles.input, { color: palette.inputText }]}
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
@@ -290,100 +242,46 @@ export default function RegisterScreen() {
             />
           </View>
 
-          <View
-            style={[
-              styles.inputContainer,
-              {
-                backgroundColor: palette.inputBackground,
-                borderColor: palette.inputBorder,
-              },
-            ]}>
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={palette.inputPlaceholder}
-              style={styles.inputIcon}
-            />
+          <View style={[styles.inputContainer, { backgroundColor: palette.inputBackground, borderColor: palette.border + '50' }]}>
+            <Ionicons name="lock-closed-outline" size={22} color={palette.inputPlaceholder} style={styles.inputIcon} />
             <TextInput
               value={password}
               onChangeText={setPassword}
               placeholder={t('register.passwordPlaceholder')}
               placeholderTextColor={palette.inputPlaceholder}
-              style={[
-                styles.input,
-                {
-                  color: palette.inputText,
-                },
-              ]}
+              style={[styles.input, { color: palette.inputText }]}
               secureTextEntry
               textContentType="password"
             />
           </View>
 
-          <View
-            style={[
-              styles.inputContainer,
-              {
-                backgroundColor: palette.inputBackground,
-                borderColor: palette.inputBorder,
-              },
-            ]}>
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={palette.inputPlaceholder}
-              style={styles.inputIcon}
-            />
+          <View style={[styles.inputContainer, { backgroundColor: palette.inputBackground, borderColor: palette.border + '50' }]}>
+            <Ionicons name="shield-checkmark-outline" size={22} color={palette.inputPlaceholder} style={styles.inputIcon} />
             <TextInput
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               placeholder={t('register.confirmPasswordPlaceholder')}
               placeholderTextColor={palette.inputPlaceholder}
-              style={[
-                styles.input,
-                {
-                  color: palette.inputText,
-                },
-              ]}
+              style={[styles.input, { color: palette.inputText }]}
               secureTextEntry
               textContentType="password"
             />
           </View>
 
           <TouchableOpacity
+            activeOpacity={0.7}
             onPress={() => {
               setTempGender(gender);
               setShowGenderPicker(true);
             }}
-            style={[
-              styles.inputContainer,
-              {
-                backgroundColor: palette.inputBackground,
-                borderColor: palette.inputBorder,
-              },
-            ]}>
-            <Ionicons
-              name="person-outline"
-              size={20}
-              color={palette.inputPlaceholder}
-              style={styles.inputIcon}
-            />
+            style={[styles.inputContainer, { backgroundColor: palette.inputBackground, borderColor: palette.border + '50' }]}>
+            <Ionicons name="male-female-outline" size={22} color={palette.inputPlaceholder} style={styles.inputIcon} />
             <View style={styles.pickerTextContainer}>
-              <Text
-                style={[
-                  styles.pickerText,
-                  {
-                    color: palette.inputText,
-                  },
-                ]}>
+              <Text style={[styles.pickerText, { color: palette.inputText }]}>
                 {t(`register.genderOptions.${gender}`)}
               </Text>
             </View>
-            <Ionicons
-              name="chevron-down-outline"
-              size={20}
-              color={palette.inputPlaceholder}
-            />
+            <Ionicons name="chevron-down-outline" size={20} color={palette.inputPlaceholder} />
           </TouchableOpacity>
 
           <Modal
@@ -397,64 +295,34 @@ export default function RegisterScreen() {
               <Pressable
                 style={[styles.modalContent, { backgroundColor: palette.surface }]}
                 onPress={(e) => e.stopPropagation()}>
-                <Text
-                  style={[
-                    styles.modalTitle,
-                    {
-                      color: palette.textPrimary,
-                    },
-                  ]}>
+                <Text style={[styles.modalTitle, { color: palette.textPrimary }]}>
                   {t('register.selectGender')}
                 </Text>
-                <View
-                  style={[
-                    styles.pickerWrapper,
-                    {
-                      backgroundColor: palette.background,
-                      borderColor: palette.border,
-                    },
-                  ]}>
+                <View style={[styles.pickerWrapper, { backgroundColor: palette.background, borderColor: palette.border }]}>
                   <Picker
                     selectedValue={tempGender}
                     onValueChange={(value) => setTempGender(value as GenderOption)}
-                    style={{ color: palette.textPrimary }}
-                    itemStyle={{ color: palette.textPrimary }}>
-                    <Picker.Item label={t('register.genderOptions.h')} value="h" color={palette.textPrimary} />
-                    <Picker.Item label={t('register.genderOptions.m')} value="m" color={palette.textPrimary} />
-                    <Picker.Item label={t('register.genderOptions.o')} value="o" color={palette.textPrimary} />
+                    style={{ color: palette.textPrimary, backgroundColor: palette.background }}
+                    dropdownIconColor={palette.textPrimary}>
+                    <Picker.Item label={t('register.genderOptions.h')} value="h" />
+                    <Picker.Item label={t('register.genderOptions.m')} value="m" />
                   </Picker>
                 </View>
                 <View style={styles.modalButtons}>
                   <Pressable
-                    style={[
-                      styles.modalButton,
-                      styles.modalButtonSecondary,
-                      { borderColor: palette.border },
-                    ]}
+                    style={[styles.modalButton, styles.modalButtonSecondary, { borderColor: palette.border }]}
                     onPress={() => setShowGenderPicker(false)}>
-                    <Text
-                      style={[
-                        styles.modalButtonText,
-                        { color: palette.textSecondary },
-                      ]}>
+                    <Text style={[styles.modalButtonText, { color: palette.textSecondary }]}>
                       {t('common.cancel')}
                     </Text>
                   </Pressable>
                   <Pressable
-                    style={[
-                      styles.modalButton,
-                      styles.modalButtonPrimary,
-                      { backgroundColor: palette.primary },
-                    ]}
+                    style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: palette.primary }]}
                     onPress={() => {
                       setGender(tempGender);
                       setShowGenderPicker(false);
                     }}>
-                    <Text
-                      style={[
-                        styles.modalButtonText,
-                        { color: palette.buttonText },
-                      ]}>
+                    <Text style={[styles.modalButtonText, { color: palette.buttonText }]}>
                       {t('common.ok')}
                     </Text>
                   </Pressable>
@@ -463,80 +331,44 @@ export default function RegisterScreen() {
             </Pressable>
           </Modal>
 
-          <TouchableOpacity
-            onPress={handleRegister}
-            disabled={loading}
-            style={[
-              styles.button,
-              {
-                backgroundColor: palette.primary,
-                opacity: loading ? 0.7 : 1,
-              },
-            ]}>
-            <Text
-              style={[
-                styles.buttonLabel,
-                {
-                  color: palette.buttonText,
-                },
-              ]}>
-              {loading ? t('register.registering') : t('register.registerButton')}
+          {/* Botón Principal con efecto GLOW */}
+          <View style={[styles.glowWrapper, { shadowColor: palette.primary, marginTop: 8 }]}>
+            <TouchableOpacity
+              onPress={handleRegister}
+              disabled={loading}
+              style={[styles.primaryButton, { backgroundColor: palette.primary, opacity: loading ? 0.8 : 1 }]}>
+              {loading ? (
+                <ActivityIndicator size="small" color={palette.buttonText} />
+              ) : (
+                <Text style={[styles.buttonLabel, { color: palette.buttonText }]}>
+                  {t('register.registerButton')}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Link para volver a Login */}
+          <TouchableOpacity onPress={handleGoToLogin} style={styles.loginLinkContainer}>
+            <Text style={[styles.loginLink, { color: palette.textSecondary }]}>
+              {t('register.alreadyHaveAccount')}
             </Text>
-            {loading && <ActivityIndicator size="small" color={palette.buttonText} />}
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity onPress={handleGoToLogin}>
-          <Text
-            style={[
-              styles.loginLink,
-              {
-                color: palette.textSecondary,
-              },
-            ]}>
-            {t('register.alreadyHaveAccount')}
-          </Text>
-        </TouchableOpacity>
-
+        {/* Banners de Éxito / Error */}
         {success && (
-          <View
-            style={[
-              styles.successBanner,
-              {
-                backgroundColor: `${palette.primary}22`,
-                borderColor: palette.primary,
-              },
-            ]}>
-            <Ionicons name="checkmark-circle" size={18} color={palette.primary} />
-            <Text
-              style={[
-                styles.successText,
-                {
-                  color: palette.primary,
-                },
-              ]}>
+          <View style={[styles.successBanner, { backgroundColor: `${palette.primary}15`, borderColor: palette.primary }]}>
+            <Ionicons name="checkmark-circle" size={20} color={palette.primary} />
+            <Text style={[styles.successText, { color: palette.primary }]}>
               {t('register.successMessage')}
             </Text>
           </View>
         )}
 
         {error && (
-          <View
-            style={[
-              styles.errorBanner,
-              {
-                backgroundColor: `${palette.accent}22`,
-                borderColor: palette.accent,
-              },
-            ]}>
-            <Ionicons name="alert-circle" size={18} color={palette.accent} />
-            <Text
-              style={[
-                styles.errorText,
-                {
-                  color: palette.accent,
-                },
-              ]}>
+          <View style={[styles.errorBanner, { backgroundColor: `${palette.accent}15`, borderColor: palette.accent }]}>
+            <Ionicons name="alert-circle" size={20} color={palette.accent} />
+            <Text style={[styles.errorText, { color: palette.accent }]}>
               {error}
             </Text>
           </View>
@@ -551,77 +383,83 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-    gap: 16,
+    paddingVertical: 40,
+    paddingHorizontal: 28,
+    gap: 24,
     flexGrow: 1,
+    justifyContent: 'center',
   },
   languageContainer: {
     alignItems: 'flex-end',
+    marginBottom: -10,
   },
+  
+  // Encabezado
   heroContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 8,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    fontSize: 36,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
-  avatar: {
-    width: 140,
-    height: 140,
-  },
+
+  // Formulario
   form: {
-    gap: 12,
+    gap: 16,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    borderWidth: 1.5,
+    borderRadius: 16, // Bordes más redondeados
+    paddingHorizontal: 16,
+    height: 58, // Más alto, estilo premium
   },
   inputIcon: {
-    marginRight: 8,
+    marginRight: 12,
   },
   input: {
     flex: 1,
-    height: 44,
+    height: '100%',
     fontSize: 16,
+    fontWeight: '500',
   },
   pickerTextContainer: {
     flex: 1,
     justifyContent: 'center',
-    height: 44,
+    height: '100%',
   },
   pickerText: {
     fontSize: 16,
+    fontWeight: '500',
     includeFontPadding: false,
   },
+
+  // Modal del Picker
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 24,
   },
   modalContent: {
     width: '100%',
     maxWidth: 400,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 24,
-    gap: 16,
+    gap: 20,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '800',
     textAlign: 'center',
   },
   pickerWrapper: {
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1.5,
     overflow: 'hidden',
     maxHeight: 200,
@@ -629,12 +467,11 @@ const styles = StyleSheet.create({
   modalButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
   },
   modalButton: {
     flex: 1,
-    borderRadius: 999,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -643,37 +480,52 @@ const styles = StyleSheet.create({
   },
   modalButtonPrimary: {},
   modalButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
   },
-  button: {
-    borderRadius: 999,
-    paddingVertical: 14,
+
+  // Botones
+  glowWrapper: {
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 12, 
+    borderRadius: 16,
+  },
+  primaryButton: {
+    borderRadius: 16,
+    height: 56,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
   },
   buttonLabel: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  
+  // Link de Login
+  loginLinkContainer: {
+    alignItems: 'center',
+    marginTop: 8,
+    paddingVertical: 8,
   },
   loginLink: {
-    textAlign: 'center',
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '600',
   },
+
+  // Banners de Éxito / Error
   successBanner: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    marginTop: 12,
+    borderWidth: 1.5,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   successText: {
     flex: 1,
@@ -681,14 +533,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   errorBanner: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    marginTop: 12,
+    borderWidth: 1.5,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   errorText: {
     flex: 1,
@@ -696,4 +548,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

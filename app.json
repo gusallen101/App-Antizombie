@@ -1,17 +1,18 @@
 {
   "expo": {
-    "name": "¿Soy Zombie?",
+    "name": "Antizombie",
     "slug": "soy-zombie",
-    "version": "5.0.1",
+    "owner": "igniteyou",
+    "version": "5.0.9",
     "orientation": "portrait",
-    "icon": "./assets/images/app-icon.png",
+    "icon": "./assets/images/iconAntizombie.png",
     "scheme": "zombieapprn",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.graphicsandcode.zombie",
-      "buildNumber": "13",
+      "buildNumber": "24",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -21,7 +22,7 @@
       "versionCode": 100,
       "adaptiveIcon": {
         "backgroundColor": "#FFD700",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "foregroundImage": "./assets/images/iconAntizombie.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -30,10 +31,10 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/iconAntizombie.png"
     },
     "splash": {
-      "image": "./assets/images/splash.png",
+      "image": "./assets/images/iconAntizombie.png",
       "resizeMode": "cover",
       "backgroundColor": "#1a1a2e"
     },
@@ -42,14 +43,14 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash.png",
+          "image": "./assets/images/iconAntizombie.png",
           "resizeMode": "cover",
           "backgroundColor": "#1a1a2e",
           "dark": {
             "backgroundColor": "#1a1a2e"
           },
           "android": {
-            "image": "./assets/images/splash.png",
+            "image": "./assets/images/iconAntizombie.png",
             "resizeMode": "cover",
             "backgroundColor": "#1a1a2e",
             "logo": "./assets/images/splash-icon.png"
@@ -59,7 +60,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/app-icon.png",
+          "icon": "./assets/images/iconAntizombie.png",
           "color": "#6E1F7C",
           "sounds": []
         }
